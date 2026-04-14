@@ -61,7 +61,9 @@ function normalizePositiveInt(value: number | undefined): number | undefined {
 function resolveSelectionRule(option: MenuItemOption): SelectionRule {
   const minSelect = normalizePositiveInt(option.minSelect);
   const rawMaxSelect = normalizePositiveInt(option.maxSelect);
-  const isSingleSelect = !(typeof rawMaxSelect === "number" && rawMaxSelect > 1);
+  const isSingleSelect = !(
+    typeof rawMaxSelect === "number" && rawMaxSelect > 1
+  );
   const maxSelect = isSingleSelect ? undefined : rawMaxSelect;
   return { minSelect, maxSelect, isSingleSelect };
 }
