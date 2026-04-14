@@ -25,7 +25,7 @@ jobs:
           node-version: "lts/*"
 
       - name: Inject environment variables
-        run: echo "${{ secrets.ENV }}" > .env
+        run: printf '%s' "${{ secrets.ENV }}" > .env
 
       - name: Install dependencies
         run: npm install --force
