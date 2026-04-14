@@ -4,12 +4,13 @@ import { Category } from "./models/category";
 import { MenuItem } from "./models/menu-item";
 import { Order } from "./models/order";
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb://doquang039:03031993Thu1@203.145.46.244:27017/jozo?authSource=admin&directConnection=true";
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  throw new Error("MONGODB_URI is not defined in environment variables");
+}
 
 async function seed() {
-  await mongoose.connect(MONGODB_URI);
+  await mongoose.connect(MONGODB_URI as string);
   console.log("Connected to MongoDB");
 
   await Order.deleteMany();
@@ -26,7 +27,7 @@ async function seed() {
         name: `Ban ${i + 1}`,
         isActive: true,
         description: i < 5 ? "Tang 1" : "Tang 2",
-      }))
+      })),
     );
     console.log("Created 10 tables (coffee_tables was empty)");
   } else {
