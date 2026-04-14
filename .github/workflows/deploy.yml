@@ -33,7 +33,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Inject environment variables
-        run: echo "${{ secrets.ENV_FILE }}" > .env
+        run: echo "${{ secrets.ENV }}" > .env
 
       - name: Get short SHA
         id: get_sha
@@ -56,7 +56,7 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
           script: |
-            echo "${{ secrets.ENV_FILE }}" > .env
+            echo "${{ secrets.ENV }}" > .env
             docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
             docker pull ${{ secrets.DOCKER_USERNAME }}/jozo-order:${{ needs.build.outputs.GIT_SHA }}
             docker stop jozo-order || true
