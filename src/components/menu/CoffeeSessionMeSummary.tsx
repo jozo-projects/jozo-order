@@ -197,6 +197,23 @@ function tryServerCart(me: unknown): {
   return null;
 }
 
+function tryPeopleCount(me: unknown): number {
+  if (me == null || typeof me !== "object" || Array.isArray(me)) return 0;
+  const root = me as Record<string, unknown>;
+  const layers: Record<string, unknown>[] = [root];
+  for (const key of ["data", "result", "session"] as const) {
+    const x = root[key];
+    if (x && typeof x === "object" && !Array.isArray(x)) {
+      layers.push(x as Record<string, unknown>);
+    }
+  }
+  for (const layer of layers) {
+    const n = numField(layer.peopleCount ?? layer.people_count);
+    if (n != null && n > 0) return Math.floor(n);
+  }
+  return 0;
+}
+
 function orderLine(o: unknown, index: number): string {
   if (o == null) return `Don ${index + 1}`;
   if (typeof o === "string" || typeof o === "number") return String(o);
@@ -215,6 +232,7 @@ function orderLine(o: unknown, index: number): string {
 }
 
 type CartLine = { itemId: string; categoryId: string; qty: number };
+type PricedCartLine = CartLine & { chargedQty: number };
 
 function cartLinesFromMaps(cart: {
   drinks: Record<string, number>;
@@ -261,6 +279,7 @@ export function CoffeeSessionMePanel({
 }: CoffeeSessionMePanelProps) {
   const orders = tryOrders(data);
   const serverCart = tryServerCart(data);
+  const peopleCount = useMemo(() => tryPeopleCount(data), [data]);
   const lineItems = useMemo(() => trySessionLineItems(data), [data]);
   const useLineItems = lineItems.length > 0;
 
@@ -275,14 +294,42 @@ export function CoffeeSessionMePanel({
     [serverCart],
   );
 
+  const pricedCartLines = useMemo<PricedCartLine[]>(() => {
+    const initialRemaining = Math.max(0, Math.floor(peopleCount));
+    const acc = cartLines.reduce<{
+      remaining: number;
+      lines: PricedCartLine[];
+    }>(
+      (state, line) => {
+        if (line.categoryId !== "drink") {
+          return {
+            remaining: state.remaining,
+            lines: [...state.lines, { ...line, chargedQty: line.qty }],
+          };
+        }
+        const freeApplied = Math.min(line.qty, state.remaining);
+        const nextRemaining = state.remaining - freeApplied;
+        return {
+          remaining: nextRemaining,
+          lines: [
+            ...state.lines,
+            { ...line, chargedQty: Math.max(0, line.qty - freeApplied) },
+          ],
+        };
+      },
+      { remaining: initialRemaining, lines: [] },
+    );
+    return acc.lines;
+  }, [cartLines, peopleCount]);
+
   const cartTotalMenu = useMemo(() => {
     let t = 0;
-    for (const line of cartLines) {
+    for (const line of pricedCartLines) {
       const it = itemById.get(line.itemId);
-      if (it) t += basePriceForBoardGame(it) * line.qty;
+      if (it) t += basePriceForBoardGame(it) * line.chargedQty;
     }
     return t;
-  }, [cartLines, itemById]);
+  }, [pricedCartLines, itemById]);
 
   const listTotalSum = useMemo(
     () => lineItems.reduce((a, l) => a + l.lineListTotal, 0),
@@ -390,13 +437,17 @@ export function CoffeeSessionMePanel({
                           </li>
                         );
                       })
-                    : cartLines.map((line) => {
+                    : pricedCartLines.map((line) => {
                         const it = itemById.get(line.itemId);
                         const name =
                           it?.name ??
                           `Mon #${line.itemId.slice(-Math.min(6, line.itemId.length))}`;
                         const unit = basePriceForBoardGame(it);
-                        const lineTotal = unit * line.qty;
+                        const lineTotal = unit * line.chargedQty;
+                        const freeQty =
+                          line.categoryId === "drink"
+                            ? Math.max(0, line.qty - line.chargedQty)
+                            : 0;
                         return (
                           <li
                             key={`${line.categoryId}-${line.itemId}`}
@@ -408,6 +459,12 @@ export function CoffeeSessionMePanel({
                               </p>
                               <p className="mt-0.5 text-xs text-muted-foreground">
                                 SL: {line.qty}
+                                {line.categoryId === "drink" && freeQty > 0
+                                  ? ` · mien phi ${freeQty}`
+                                  : null}
+                                {line.categoryId === "drink" && line.chargedQty > 0
+                                  ? ` · tinh tien ${line.chargedQty}`
+                                  : null}
                                 {it ? ` · ${formatPrice(unit)}/mon` : null}
                               </p>
                             </div>
