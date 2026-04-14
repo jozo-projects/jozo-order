@@ -154,12 +154,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const drinks = drinksProvided
-      ? normalizeQtyMapLegacy(c.drinks)
-      : undefined;
-    const snacks = snacksProvided
-      ? normalizeQtyMapLegacy(c.snacks)
-      : undefined;
+    const drinks = drinksProvided ? normalizeQtyMapLegacy(c.drinks) : undefined;
+    const snacks = snacksProvided ? normalizeQtyMapLegacy(c.snacks) : undefined;
 
     if (drinksProvided && snacksProvided) {
       if (

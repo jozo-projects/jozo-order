@@ -7,9 +7,15 @@ import type {
 
 export function getServerApiBase(): string | null {
   const raw =
-    process.env.SERVER_API_URL?.replace(/\/$/, "") ||
-    process.env.NEXT_PUBLIC_SERVER_API_URL?.replace(/\/$/, "");
-  return raw || null;
+    process.env.SERVER_API_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SERVER_API_URL?.trim();
+  if (!raw) return null;
+
+  // Accept host:port from env and normalize for fetch().
+  const withScheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(raw)
+    ? raw
+    : `http://${raw}`;
+  return withScheme.replace(/\/$/, "");
 }
 
 export async function postCoffeeSessionsActivate(
@@ -37,9 +43,9 @@ export async function getCoffeeSessionsMe(
     },
     cache: "no-store",
   });
-  const data = (await res.json().catch(() => null)) as
-    | CoffeeSessionsMeResponse
-    | null;
+  const data = (await res
+    .json()
+    .catch(() => null)) as CoffeeSessionsMeResponse | null;
   return { res, data };
 }
 
