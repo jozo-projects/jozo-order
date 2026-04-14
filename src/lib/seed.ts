@@ -3,14 +3,10 @@ import { CoffeeTable } from "./models/table";
 import { Category } from "./models/category";
 import { MenuItem } from "./models/menu-item";
 import { Order } from "./models/order";
-
-const MONGODB_URI = process.env.MONGODB_URI;
-if (!MONGODB_URI) {
-  throw new Error("MONGODB_URI is not defined in environment variables");
-}
+import { buildMongoUriFromEnv } from "./mongodb";
 
 async function seed() {
-  await mongoose.connect(MONGODB_URI as string);
+  await mongoose.connect(buildMongoUriFromEnv());
   console.log("Connected to MongoDB");
 
   await Order.deleteMany();
