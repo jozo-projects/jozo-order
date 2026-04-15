@@ -1,9 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CoffeeSessionOrderLineItem, MenuItem } from "@/types";
-import { basePriceForBoardGame } from "@/lib/menu-item-pricing";
+import { submitCoffeeSessionCart } from "@/lib/coffee-submit-cart-client";
+import {
+  basePriceForBoardGame,
+  optionsExtraForLine,
+} from "@/lib/menu-item-pricing";
+import { Button } from "@/components/ui/Button";
 import { formatPrice, cn } from "@/lib/utils";
+import {
+  buildSubmitCartPayload,
+  useCoffeeCartStore,
+} from "@/stores/useCoffeeCartStore";
 
 function numField(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -231,6 +241,25 @@ function orderLine(o: unknown, index: number): string {
   return `Don ${index + 1}`;
 }
 
+function formatLineSelections(
+  line: {
+    selections?: Array<{ groupKey: string; optionKey: string }>;
+  },
+  item: MenuItem | undefined,
+): string {
+  if (!line.selections?.length) return "";
+  const optionGroups = item?.options ?? [];
+  return line.selections
+    .map((s) => {
+      const group = optionGroups.find((g) => g.id === s.groupKey);
+      const choice = group?.choices.find((c) => c.id === s.optionKey);
+      if (!group?.name || !choice?.label) return "";
+      return `${group.name}: ${choice.label}`;
+    })
+    .filter((x) => x.length > 0)
+    .join(" · ");
+}
+
 type CartLine = { itemId: string; categoryId: string; qty: number };
 type PricedCartLine = CartLine & { chargedQty: number };
 
@@ -268,6 +297,8 @@ export function getCoffeeMeTabBadgeCount(data: unknown): number {
 interface CoffeeSessionMePanelProps {
   data: unknown;
   menuItems?: MenuItem[];
+  tableCode: string;
+  checkoutIntent?: boolean;
   className?: string;
 }
 
@@ -275,8 +306,17 @@ interface CoffeeSessionMePanelProps {
 export function CoffeeSessionMePanel({
   data,
   menuItems = [],
+  tableCode,
+  checkoutIntent = false,
   className,
 }: CoffeeSessionMePanelProps) {
+  const router = useRouter();
+  const localCartLines = useCoffeeCartStore((s) => s.lines);
+  const clearLocalCart = useCoffeeCartStore((s) => s.clear);
+  const [submittingLocalCheckout, setSubmittingLocalCheckout] = useState(false);
+  const [localCheckoutFeedback, setLocalCheckoutFeedback] = useState<
+    string | null
+  >(null);
   const orders = tryOrders(data);
   const serverCart = tryServerCart(data);
   const peopleCount = useMemo(() => tryPeopleCount(data), [data]);
@@ -342,6 +382,72 @@ export function CoffeeSessionMePanel({
 
   const hasCart = useLineItems || cartLines.length > 0;
   const hasOrders = orders.length > 0;
+  const hasLocalCart = localCartLines.length > 0;
+
+  const localCheckoutRows = useMemo(
+    () =>
+      localCartLines.map((line) => {
+        const item = itemById.get(line.itemId);
+        const unit =
+          basePriceForBoardGame(item) + optionsExtraForLine(item, line);
+        const selectionText = formatLineSelections(line, item);
+        return {
+          line,
+          item,
+          unit,
+          lineTotal: unit * line.quantity,
+          selectionText,
+        };
+      }),
+    [localCartLines, itemById],
+  );
+
+  const localCheckoutTotal = useMemo(
+    () => localCheckoutRows.reduce((sum, row) => sum + row.lineTotal, 0),
+    [localCheckoutRows],
+  );
+
+  const handleConfirmLocalCheckout = async () => {
+    if (!hasLocalCart || submittingLocalCheckout) return;
+    setSubmittingLocalCheckout(true);
+    setLocalCheckoutFeedback(null);
+    try {
+      const cart = buildSubmitCartPayload(localCartLines);
+      const {
+        ok,
+        status,
+        data: payloadData,
+      } = await submitCoffeeSessionCart(cart);
+      const payload = payloadData as {
+        sessionInvalid?: boolean;
+        message?: string;
+      } | null;
+
+      if (status === 401 && payload?.sessionInvalid) {
+        await fetch("/api/client/coffee-sessions/clear", { method: "POST" });
+        clearLocalCart();
+        router.refresh();
+        return;
+      }
+
+      if (ok) {
+        clearLocalCart();
+        setLocalCheckoutFeedback("Dat hang thanh cong!");
+        router.replace(`/${encodeURIComponent(tableCode)}?tab=orders`);
+        router.refresh();
+        return;
+      }
+
+      setLocalCheckoutFeedback(
+        (typeof payload?.message === "string" && payload.message) ||
+          "Dat hang that bai, thu lai.",
+      );
+    } catch {
+      setLocalCheckoutFeedback("Loi mang, thu lai.");
+    } finally {
+      setSubmittingLocalCheckout(false);
+    }
+  };
 
   return (
     <div className={cn("px-4 pt-3", className)}>
@@ -349,9 +455,6 @@ export function CoffeeSessionMePanel({
         <h1 className="text-xl font-bold tracking-tight text-foreground">
           Don cua toi
         </h1>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Gio dang luu tren he thong va lich su dat mon
-        </p>
       </header>
 
       {!hasCart && !hasOrders ? (
@@ -366,13 +469,95 @@ export function CoffeeSessionMePanel({
         </div>
       ) : (
         <div className="space-y-4 pb-4">
+          {checkoutIntent ? (
+            <section>
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs">
+                  ✅
+                </span>
+                Xac nhan don truoc khi gui
+              </h2>
+              <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+                {hasLocalCart ? (
+                  <ul className="divide-y divide-border">
+                    {localCheckoutRows.map(
+                      ({ line, item, unit, lineTotal, selectionText }) => (
+                        <li
+                          key={line.lineId}
+                          className="flex items-start justify-between gap-3 px-4 py-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium leading-snug text-foreground">
+                              {item?.name ??
+                                `Mon #${line.itemId.slice(-Math.min(6, line.itemId.length))}`}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              SL: {line.quantity} · {formatPrice(unit)}/mon
+                            </p>
+                            {line.note ? (
+                              <p className="mt-0.5 text-xs text-foreground/80">
+                                {line.note}
+                              </p>
+                            ) : null}
+                            {selectionText ? (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {selectionText}
+                              </p>
+                            ) : null}
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+                            {item ? formatPrice(lineTotal) : "—"}
+                          </p>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : (
+                  <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    Khong co mon nao de checkout.
+                  </p>
+                )}
+                <div className="border-t border-border bg-muted/30 px-4 py-3">
+                  {localCheckoutFeedback ? (
+                    <p
+                      className={cn(
+                        "mb-2 rounded-lg px-3 py-2 text-sm",
+                        localCheckoutFeedback.includes("thanh cong")
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-destructive text-destructive-foreground",
+                      )}
+                    >
+                      {localCheckoutFeedback}
+                    </p>
+                  ) : null}
+                  <div className="mb-3 flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Tong tam tinh</span>
+                    <span className="text-base font-bold text-primary tabular-nums">
+                      {formatPrice(localCheckoutTotal)}
+                    </span>
+                  </div>
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    disabled={!hasLocalCart || submittingLocalCheckout}
+                    onClick={handleConfirmLocalCheckout}
+                  >
+                    {submittingLocalCheckout
+                      ? "Dang gui..."
+                      : "Xac nhan dat hang"}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {hasCart && (
             <section>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs">
                   🛒
                 </span>
-                Gio hang (dang luu)
+                Gio hang
               </h2>
               <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
                 <ul className="divide-y divide-border">
@@ -462,7 +647,8 @@ export function CoffeeSessionMePanel({
                                 {line.categoryId === "drink" && freeQty > 0
                                   ? ` · mien phi ${freeQty}`
                                   : null}
-                                {line.categoryId === "drink" && line.chargedQty > 0
+                                {line.categoryId === "drink" &&
+                                line.chargedQty > 0
                                   ? ` · tinh tien ${line.chargedQty}`
                                   : null}
                                 {it ? ` · ${formatPrice(unit)}/mon` : null}

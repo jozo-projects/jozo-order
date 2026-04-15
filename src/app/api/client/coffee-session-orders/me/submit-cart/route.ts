@@ -207,7 +207,12 @@ export async function POST(request: NextRequest) {
       if (!snacksProvided) body.cart.snacks = {};
     }
 
-    const { res: upstreamRes, data } = await postCoffeeSessionOrdersSubmitCart(
+    const {
+      res: upstreamRes,
+      data,
+      rawText: upstreamRawText,
+      isJson: upstreamIsJson,
+    } = await postCoffeeSessionOrdersSubmitCart(
       baseUrl,
       token,
       body,
@@ -227,7 +232,25 @@ export async function POST(request: NextRequest) {
       return res;
     }
 
-    return NextResponse.json(data ?? { success: false }, {
+    if (data != null) {
+      return NextResponse.json(data, {
+        status: upstreamRes.status,
+      });
+    }
+
+    const fallback: Record<string, unknown> = {
+      success: false,
+      message: "Upstream tra body khong phai JSON",
+      upstreamStatus: upstreamRes.status,
+      upstreamStatusText: upstreamRes.statusText || null,
+      upstreamContentType: upstreamRes.headers.get("content-type"),
+      upstreamBodyWasJson: upstreamIsJson,
+    };
+    const preview = upstreamRawText.trim();
+    if (preview.length > 0) {
+      fallback.upstreamRaw = preview.slice(0, 800);
+    }
+    return NextResponse.json(fallback, {
       status: upstreamRes.status,
     });
   } catch (error) {

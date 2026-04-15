@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Category, MenuItem } from "@/types";
 import { MenuView } from "@/components/menu/MenuView";
 import { cn } from "@/lib/utils";
@@ -92,17 +93,20 @@ export function TableAppShell({
   tableCode,
   coffeeMe,
 }: TableAppShellProps) {
-  const [tab, setTab] = useState<TableTab>("menu");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<TableTab>(() => {
+    const initialTabParam = searchParams.get("tab");
+    if (initialTabParam === "orders" || initialTabParam === "guide") {
+      return initialTabParam;
+    }
+    return "menu";
+  });
+  const checkoutIntent = searchParams.get("checkout") === "1";
   const ordersBadge = coffeeMe != null ? getCoffeeMeTabBadgeCount(coffeeMe) : 0;
   const showOrdersDot = ordersBadge > 0;
 
   return (
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col",
-        TAB_BAR_VAR,
-      )}
-    >
+    <div className={cn("flex min-h-0 flex-1 flex-col", TAB_BAR_VAR)}>
       <div
         className={cn(
           "min-h-0 flex-1 overflow-x-hidden overflow-y-auto",
@@ -123,6 +127,8 @@ export function TableAppShell({
           <CoffeeSessionMePanel
             data={coffeeMe ?? {}}
             menuItems={items}
+            tableCode={tableCode}
+            checkoutIntent={checkoutIntent}
             className="pb-2"
           />
         )}

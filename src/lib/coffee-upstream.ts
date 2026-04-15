@@ -67,8 +67,18 @@ export async function postCoffeeSessionOrdersSubmitCart(
       cache: "no-store",
     },
   );
-  const data = (await res.json().catch(() => null)) as unknown;
-  return { res, data };
+  const rawText = await res.text().catch(() => "");
+  let data: unknown = null;
+  let isJson = false;
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText) as unknown;
+      isJson = true;
+    } catch {
+      data = null;
+    }
+  }
+  return { res, data, rawText, isJson };
 }
 
 function pickTokenFromObject(obj: Record<string, unknown>): string | null {

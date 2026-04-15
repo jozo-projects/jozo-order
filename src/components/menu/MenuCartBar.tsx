@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { submitCoffeeSessionCart } from "@/lib/coffee-submit-cart-client";
-import { basePriceForBoardGame, optionsExtraForLine } from "@/lib/menu-item-pricing";
+import {
+  basePriceForBoardGame,
+  optionsExtraForLine,
+} from "@/lib/menu-item-pricing";
 import { formatPrice, cn } from "@/lib/utils";
 import {
   buildSubmitCartPayload,
@@ -12,12 +15,108 @@ import {
   useCoffeeCartStore,
   type LocalCartLine,
 } from "@/stores/useCoffeeCartStore";
-import type { MenuItem } from "@/types";
+import type { FnbCategory, MenuItem } from "@/types";
 
 interface MenuCartBarProps {
   items: MenuItem[];
   tableCode: string;
   insetBottomNav?: boolean;
+}
+
+const CATEGORY_LABEL: Record<FnbCategory, string> = {
+  drink: "Đồ uống",
+  snack: "Đồ ăn",
+};
+
+function IconCart() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="9" cy="20" r="1" />
+      <circle cx="18" cy="20" r="1" />
+      <path d="M1 1h4l2.68 12.39a2 2 0 0 0 2 1.61h7.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
+  );
+}
+
+function normalizeSelectBound(value: number | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const n = Math.floor(value);
+  return n >= 0 ? n : null;
+}
+
+function validateLineSelections(
+  line: LocalCartLine,
+  item: MenuItem,
+): string | null {
+  const optionGroups = item.options ?? [];
+  if (optionGroups.length === 0) {
+    if (line.selections?.length) {
+      return `Mon "${item.name}" khong ho tro tuy chon, vui long bo selections.`;
+    }
+    return null;
+  }
+
+  const selections = line.selections ?? [];
+  const byGroup = new Map<string, Set<string>>();
+  for (const s of selections) {
+    const group = optionGroups.find((g) => g.id === s.groupKey);
+    if (!group) {
+      return `Mon "${item.name}" co groupKey khong hop le: "${s.groupKey}".`;
+    }
+    const optionExists = group.choices.some((c) => c.id === s.optionKey);
+    if (!optionExists) {
+      return `Mon "${item.name}" co optionKey khong hop le: "${s.optionKey}" trong group "${s.groupKey}".`;
+    }
+    const cur = byGroup.get(s.groupKey) ?? new Set<string>();
+    if (cur.has(s.optionKey)) {
+      return `Mon "${item.name}" bi trung option "${s.optionKey}" trong group "${s.groupKey}".`;
+    }
+    cur.add(s.optionKey);
+    byGroup.set(s.groupKey, cur);
+  }
+
+  for (const group of optionGroups) {
+    const selectedCount = byGroup.get(group.id)?.size ?? 0;
+    const minSelect = normalizeSelectBound(group.minSelect) ?? 0;
+    const maxSelect =
+      normalizeSelectBound(group.maxSelect) ?? Number.POSITIVE_INFINITY;
+    if (selectedCount < minSelect) {
+      return `Mon "${item.name}" chua du lua chon cho nhom "${group.name}" (toi thieu ${minSelect}).`;
+    }
+    if (selectedCount > maxSelect) {
+      return `Mon "${item.name}" vuot so lua chon cho nhom "${group.name}" (toi da ${maxSelect}).`;
+    }
+  }
+
+  return null;
+}
+
+function validateCartBeforeSubmit(
+  lines: LocalCartLine[],
+  itemById: Map<string, MenuItem>,
+): string | null {
+  for (const line of lines) {
+    const item = itemById.get(line.itemId);
+    if (!item) {
+      return `Khong tim thay mon tuong ung itemId "${line.itemId}".`;
+    }
+    if (!item.isAvailable) {
+      return `Mon "${item.name}" hien khong kha dung de dat.`;
+    }
+    const selectionError = validateLineSelections(line, item);
+    if (selectionError) return selectionError;
+  }
+  return null;
 }
 
 function buildItemMap(items: MenuItem[]): Map<string, MenuItem> {
@@ -36,15 +135,28 @@ function estimateCartTotal(
   for (const line of lines) {
     const menuItem = itemById.get(line.itemId);
     if (!menuItem) continue;
-    const unit = basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
+    const unit =
+      basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
     total += unit * line.quantity;
   }
   return total;
 }
 
-function formatSelectionDebug(line: LocalCartLine): string {
+function formatSelectionDebug(
+  line: LocalCartLine,
+  menuItem: MenuItem | undefined,
+): string {
   if (!line.selections?.length) return "";
-  return line.selections.map((s) => `${s.groupKey}:${s.optionKey}`).join(" · ");
+  const optionGroups = menuItem?.options ?? [];
+  return line.selections
+    .map((s) => {
+      const group = optionGroups.find((g) => g.id === s.groupKey);
+      const choice = group?.choices.find((c) => c.id === s.optionKey);
+      const groupText = group?.name ?? s.groupKey;
+      const choiceText = choice?.label ?? s.optionKey;
+      return `${groupText}: ${choiceText}`;
+    })
+    .join(" · ");
 }
 
 interface CartLineRowProps {
@@ -63,9 +175,10 @@ function CartLineRow({
   onIncrement,
 }: CartLineRowProps) {
   const name = menuItem?.name ?? `Mon #${line.itemId.slice(-6)}`;
-  const unit = basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
+  const unit =
+    basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
   const lineTotal = unit * line.quantity;
-  const selectionText = formatSelectionDebug(line);
+  const selectionText = formatSelectionDebug(line, menuItem);
   const canAddMore = menuItem?.isAvailable !== false;
 
   const handleMinus = () => {
@@ -76,8 +189,7 @@ function CartLineRow({
     onIncrement(line);
   };
 
-  const minusLabel =
-    line.quantity <= 1 ? "Xoa khoi gio" : "Giam so luong";
+  const minusLabel = line.quantity <= 1 ? "Xoa khoi gio" : "Giam so luong";
 
   return (
     <li className="rounded-xl border border-border p-3">
@@ -86,7 +198,7 @@ function CartLineRow({
           <p className="truncate text-sm font-medium">{name}</p>
           <p className="text-xs text-muted-foreground">
             {formatPrice(unit)} / mon ·{" "}
-            <span className="capitalize">{line.category}</span>
+            <span className="capitalize">{CATEGORY_LABEL[line.category]}</span>
           </p>
           {line.note ? (
             <p className="mt-1 line-clamp-2 text-xs text-foreground/80">
@@ -200,6 +312,11 @@ export function MenuCartBar({
 
   const handleSubmit = useCallback(async () => {
     if (totalCount === 0 || submitting) return;
+    const validationError = validateCartBeforeSubmit(lines, itemById);
+    if (validationError) {
+      window.alert(validationError);
+      return;
+    }
     setSubmitting(true);
     setFeedback(null);
     try {
@@ -220,6 +337,8 @@ export function MenuCartBar({
         closeCart();
         setFeedback("Dat hang thanh cong!");
         window.setTimeout(() => setFeedback(null), 3200);
+        router.replace(`/${encodeURIComponent(tableCode)}?tab=orders`);
+        router.refresh();
         return;
       }
 
@@ -232,7 +351,16 @@ export function MenuCartBar({
     } finally {
       setSubmitting(false);
     }
-  }, [totalCount, submitting, lines, clear, closeCart, router]);
+  }, [
+    totalCount,
+    submitting,
+    lines,
+    itemById,
+    clear,
+    closeCart,
+    router,
+    tableCode,
+  ]);
 
   if (totalCount === 0 && !open && !feedback) {
     return null;
@@ -273,15 +401,22 @@ export function MenuCartBar({
             <button
               type="button"
               onClick={openCart}
-              className="flex min-w-0 flex-1 items-center justify-between rounded-xl border border-border bg-muted/40 px-4 py-3 text-left transition-colors active:bg-muted"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-left transition-colors active:bg-muted"
             >
-              <span className="text-sm font-medium">Gio hang</span>
-              <span className="shrink-0 rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground">
-                {totalCount}
+              <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <IconCart />
+                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-primary-foreground">
+                  {totalCount > 99 ? "99+" : totalCount}
+                </span>
               </span>
             </button>
-            <Button size="lg" className="shrink-0 px-5" onClick={openCart}>
-              Xem
+            <Button
+              size="lg"
+              className="shrink-0 px-4"
+              onClick={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? "Dang gui..." : "Confirm"}
             </Button>
           </div>
         </div>
@@ -294,7 +429,7 @@ export function MenuCartBar({
             onClick={handleBackdropClose}
             aria-hidden
           />
-          <div className="relative flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-2xl bg-background pb-safe animate-slide-up">
+          <div className="relative flex h-[94dvh] w-full max-w-md flex-col rounded-t-3xl bg-background pb-safe shadow-2xl animate-slide-up">
             <div className="flex justify-center pt-3 pb-2">
               <div className="h-1 w-10 rounded-full bg-border" />
             </div>
@@ -342,7 +477,7 @@ export function MenuCartBar({
                 disabled={lines.length === 0 || submitting}
                 onClick={handleSubmit}
               >
-                {submitting ? "Dang gui..." : "Dat hang"}
+                {submitting ? "Dang gui..." : "Confirm"}
               </Button>
             </div>
           </div>
