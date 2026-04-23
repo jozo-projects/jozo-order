@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
+import jozoLogo from "@/assets/images/jozo-logo.png";
 
 const PIN_LEN = 6;
 
@@ -16,7 +18,7 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
   const [digits, setDigits] = useState<string[]>(() => Array(PIN_LEN).fill(""));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  /** Tang khi can goi lai API (loi mang / PIN sai) ma PIN khong doi */
+  /** Tăng khi cần gọi lại API (lỗi mạng / PIN sai) mà PIN không đổi */
   const [retryKey, setRetryKey] = useState(0);
   const [focusIndex, setFocusIndex] = useState<number | null>(0);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
@@ -122,7 +124,7 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
 
     (async () => {
       try {
-        /* Cung origin (Next :3003): Route Handler proxy sang SERVER_API_URL + set cookie httpOnly */
+        /* Cùng origin (Next :3003): Route Handler proxy sang SERVER_API_URL + set cookie httpOnly */
         const res = await fetch("/api/client/coffee-sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -143,13 +145,13 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
         }
 
         if (!res.ok || !data.success) {
-          setError(data.message ?? "Khong the xac thuc PIN");
+          setError(data.message ?? "Không thể xác thực PIN");
           return;
         }
 
         router.refresh();
       } catch {
-        if (!cancelled) setError("Loi mang, thu lai");
+        if (!cancelled) setError("Lỗi mạng, vui lòng thử lại");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -164,7 +166,7 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid) {
-      setError("Nhap du 6 chu so");
+      setError("Nhập đủ 6 chữ số");
       return;
     }
     if (loading) return;
@@ -173,20 +175,20 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
-      <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-[0_18px_36px_rgba(195,10,10,0.14)]">
         <div className="text-center">
-          <div className="text-3xl" aria-hidden>
-            🔐
+          <div className="mx-auto mb-3 w-fit rounded-2xl bg-white p-2 shadow-sm">
+            <Image src={jozoLogo} alt="Logo Jozo" className="h-9 w-auto" priority />
           </div>
-          <h2 className="mt-3 text-lg font-semibold">Nhap ma PIN ban</h2>
+          <h2 className="mt-3 text-lg font-semibold text-primary">Nhập mã PIN bàn</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Ma 6 chu so tren ban de dat mon
+            Mã 6 chữ số trên bàn để đặt món
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <fieldset>
-            <legend className="sr-only">Ma PIN 6 chu so</legend>
+            <legend className="sr-only">Mã PIN 6 chữ số</legend>
             <div className="flex justify-center gap-2 sm:gap-2.5">
               {digits.map((digit, index) => (
                 <input
@@ -198,7 +200,7 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
                   inputMode="numeric"
                   autoComplete={index === 0 ? "one-time-code" : "off"}
                   id={`pin-${index}`}
-                  aria-label={`Chu so thu ${index + 1}`}
+                  aria-label={`Chữ số thứ ${index + 1}`}
                   maxLength={PIN_LEN}
                   value={digit}
                   onChange={(e) => handleChange(index, e)}
@@ -231,7 +233,7 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
             size="lg"
             disabled={!valid || loading}
           >
-            {loading ? "Dang xac thuc..." : "Xac nhan"}
+            {loading ? "Đang xác thực..." : "Xác nhận"}
           </Button>
         </form>
       </div>

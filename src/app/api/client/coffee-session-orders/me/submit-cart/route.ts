@@ -194,18 +194,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body: CoffeeSessionSubmitCartRequest = {
-      cart: {
-        drinks: drinksProvided ? d : {},
-        snacks: snacksProvided ? s : {},
-      },
-    };
-
-    if (hasLines) {
-      body.cart.lines = lines;
-      if (!drinksProvided) body.cart.drinks = {};
-      if (!snacksProvided) body.cart.snacks = {};
-    }
+    const body: CoffeeSessionSubmitCartRequest = hasLines
+      ? { cart: { lines: lines ?? [] } }
+      : {
+          cart: {
+            drinks: d,
+            snacks: s,
+          },
+        };
 
     const {
       res: upstreamRes,

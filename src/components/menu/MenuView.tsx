@@ -80,10 +80,10 @@ export function MenuView({
         <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
           <div className="text-4xl">📋</div>
           <p className="mt-4 text-sm font-medium text-foreground">
-            Menu dang duoc cap nhat
+            Thực đơn đang được cập nhật
           </p>
           <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-            Vui long thu lai sau hoac hoi nhan vien.
+            Vui lòng thử lại sau hoặc hỏi nhân viên.
           </p>
         </div>
         <MenuCartBar
@@ -112,7 +112,7 @@ export function MenuView({
       ) : null}
 
       {filteredItems.length > 0 ? (
-        <div className="divide-y divide-border">
+        <div className="py-1">
           {filteredItems.map((item) => (
             <MenuItemCard
               key={item.id}
@@ -126,7 +126,7 @@ export function MenuView({
         <div className="flex flex-col items-center justify-center py-20">
           <div className="text-3xl">🔍</div>
           <p className="mt-3 text-sm text-muted-foreground">
-            Khong tim thay mon nao
+            Không tìm thấy món nào
           </p>
           {searchQuery ? (
             <button
@@ -134,7 +134,7 @@ export function MenuView({
               onClick={resetSearch}
               className="mt-2 text-xs font-medium text-primary"
             >
-              Xoa bo loc
+              Xóa bộ lọc
             </button>
           ) : null}
         </div>

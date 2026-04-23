@@ -47,12 +47,12 @@ export function useTableSupportSocket({
 
     socket.on("order:created", (payload: SupportEventPayload) => {
       console.log("order:created", payload);
-      setEventStatus("Nhan order moi");
+      setEventStatus("Nhận order mới");
     });
 
     socket.on("order:support_requested", (payload: SupportEventPayload) => {
       console.log("order:support_requested", payload);
-      setEventStatus("Yeu cau da duoc nhan");
+      setEventStatus("Yêu cầu đã được nhận");
       setIsSubmitting(false);
     });
 
@@ -66,24 +66,24 @@ export function useTableSupportSocket({
 
   const requestSupport = useCallback(() => {
     if (!socket || !isConnected) {
-      setEventStatus("Socket chua san sang");
+      setEventStatus("Socket chưa sẵn sàng");
       return;
     }
 
     setIsSubmitting(true);
-    setEventStatus("Dang gui yeu cau...");
+    setEventStatus("Đang gửi yêu cầu...");
     socket.emit("order:request_support", { tableCode });
   }, [isConnected, socket, tableCode]);
 
   const statusText = !canConnect
-    ? "Thieu NEXT_PUBLIC_WS_URL"
+    ? "Thiếu NEXT_PUBLIC_WS_URL"
     : connectionError
-      ? "Khong the ket noi"
+      ? "Không thể kết nối"
       : eventStatus
         ? eventStatus
         : isConnected
-          ? "Da ket noi"
-          : "Chua ket noi";
+          ? "Đã kết nối"
+          : "Chưa kết nối";
 
   return {
     canConnect,

@@ -9,7 +9,7 @@ const geistSans = Geist({
 
 export const metadata: Metadata = {
   title: "Jozo Order",
-  description: "Dat mon truc tuyen - Jozo",
+  description: "Đặt món trực tuyến tại Jozo",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#f97316",
+  themeColor: "#c30a0a",
 };
 
 export default function RootLayout({
@@ -37,7 +37,9 @@ export default function RootLayout({
   return (
     <html lang="vi" className={`${geistSans.variable} h-full antialiased`}>
       <body className="min-h-full bg-background text-foreground">
-        <main className="mx-auto max-w-md min-h-dvh">{children}</main>
+        <main className="mx-auto min-h-dvh max-w-md bg-background shadow-[0_0_0_1px_rgba(195,10,10,0.08),0_16px_40px_rgba(195,10,10,0.12)]">
+          {children}
+        </main>
       </body>
     </html>
   );

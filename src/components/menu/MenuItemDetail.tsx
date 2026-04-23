@@ -17,8 +17,7 @@ import {
 import { formatPrice, cn } from "@/lib/utils";
 import type { CartSelection, MenuItem, MenuItemOption } from "@/types";
 
-const NOTE_MAX_LEN = 2000;
-const NOTE_PREVIEW_LEN = 42;
+const NOTE_MAX_LEN = 300;
 
 export type MenuItemDetailAddExtra = {
   note?: string;
@@ -44,13 +43,6 @@ type SelectionRule = {
   isSingleSelect: boolean;
 };
 
-function notePreviewText(raw: string): string | null {
-  const t = raw.trim();
-  if (!t) return null;
-  if (t.length <= NOTE_PREVIEW_LEN) return t;
-  return `${t.slice(0, NOTE_PREVIEW_LEN)}…`;
-}
-
 function normalizePositiveInt(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return undefined;
@@ -70,11 +62,11 @@ function resolveSelectionRule(option: MenuItemOption): SelectionRule {
 
 function selectionHintText(rule: SelectionRule): string {
   const { minSelect, maxSelect, isSingleSelect } = rule;
-  if (minSelect && maxSelect) return `(chon ${minSelect}-${maxSelect})`;
-  if (minSelect) return `(chon it nhat ${minSelect})`;
-  if (isSingleSelect) return "(chon 1 hoac bo qua)";
-  if (maxSelect && maxSelect > 1) return `(chon toi da ${maxSelect})`;
-  return "(chon nhieu hoac bo qua)";
+  if (minSelect && maxSelect) return `(chọn ${minSelect}-${maxSelect})`;
+  if (minSelect) return `(chon ít nhất ${minSelect})`;
+  if (isSingleSelect) return "(chọn 1 hoặc bỏ qua)";
+  if (maxSelect && maxSelect > 1) return `(chọn tối đa ${maxSelect})`;
+  return "(chọn nhiều hoặc bỏ qua)";
 }
 
 function CheckIndicator({ selected }: { selected: boolean }) {
@@ -145,12 +137,21 @@ function OptionGroupCard({
   return (
     <div className="overflow-hidden rounded-xl border border-border/80 bg-background shadow-sm">
       <div className="flex items-center gap-1 border-b border-border/60 bg-muted/20 px-3 py-2.5">
-        <span className="text-[15px] font-semibold text-foreground">
-          {option.name}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {selectionHintText(rule)}
-        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <span className="text-[15px] font-semibold text-foreground">
+              {option.name}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {selectionHintText(rule)}
+            </span>
+          </div>
+          {option.id === "sugar" ? (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Lưu ý: các nước đóng chai không thể thay đổi lượng đường.
+            </p>
+          ) : null}
+        </div>
       </div>
       <ul className="divide-y divide-border/70">
         {option.choices.map((choice) => {
@@ -192,20 +193,11 @@ function OptionGroupCard({
 }
 
 interface NoteSectionProps {
-  open: boolean;
   value: string;
-  preview: string | null;
-  onToggle: () => void;
   onChange: (value: string) => void;
 }
 
-function NoteSection({
-  open,
-  value,
-  preview,
-  onToggle,
-  onChange,
-}: NoteSectionProps) {
+function NoteSection({ value, onChange }: NoteSectionProps) {
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   };
@@ -213,53 +205,30 @@ function NoteSection({
   return (
     <div className="mt-1 px-3">
       <div className="overflow-hidden rounded-xl border border-border/80 bg-background shadow-sm">
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 px-3 py-3 text-left active:bg-muted/40"
-          onClick={onToggle}
-        >
+        <div className="flex items-center gap-3 px-3 py-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-base">
             📝
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-semibold text-foreground">
-              Ghi chu cho mon
-            </p>
+            <p className="text-[15px] font-semibold text-foreground">Ghi chú</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {preview ?? "Vi du: it da, lay mang di..."}
+              Ví dụ: ít đá, lấy mang đi...
             </p>
           </div>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className={cn(
-              "shrink-0 text-muted-foreground transition-transform",
-              open && "rotate-180",
-            )}
-            aria-hidden
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-        {open ? (
-          <div className="border-t border-border/60 px-3 pb-3 pt-1">
-            <textarea
-              value={value}
-              onChange={handleTextareaChange}
-              rows={3}
-              maxLength={NOTE_MAX_LEN}
-              placeholder="Nhap ghi chu cho quan (toi da 2000 ky tu)..."
-              className="w-full resize-none rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm outline-none ring-primary/25 focus:ring-2"
-            />
-            <p className="mt-1 text-right text-[11px] text-muted-foreground tabular-nums">
-              {value.length}/{NOTE_MAX_LEN}
-            </p>
-          </div>
-        ) : null}
+        </div>
+        <div className="border-t border-border/60 px-3 pb-3 pt-1">
+          <textarea
+            value={value}
+            onChange={handleTextareaChange}
+            rows={3}
+            maxLength={NOTE_MAX_LEN}
+            placeholder="Nhập ghi chú cho quán (tối đa 300 ký tự)..."
+            className="w-full resize-none rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm outline-none ring-primary/25 focus:ring-2"
+          />
+          <p className="mt-1 text-right text-[11px] text-muted-foreground tabular-nums">
+            {value.length}/{NOTE_MAX_LEN}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -273,7 +242,6 @@ function MenuItemDetailModal({
   const defaultPicked = useMemo(() => defaultPickedChoices(item), [item]);
   const [picked, setPicked] = useState<Record<string, string[]>>(defaultPicked);
   const [note, setNote] = useState("");
-  const [noteOpen, setNoteOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
@@ -326,10 +294,6 @@ function MenuItemDetailModal({
     [],
   );
 
-  const handleToggleNote = useCallback(() => {
-    setNoteOpen((prev) => !prev);
-  }, []);
-
   const handleNoteChange = useCallback((value: string) => {
     setNote(value);
   }, []);
@@ -370,7 +334,6 @@ function MenuItemDetailModal({
 
   const unitTotal = basePriceForBoardGame(item) + optionsExtra;
   const lineTotal = unitTotal * quantity;
-  const preview = notePreviewText(note);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -431,7 +394,7 @@ function MenuItemDetailModal({
                     disabled={!item.isAvailable}
                     onClick={handleDecrementQty}
                     aria-label={
-                      quantity <= 1 ? "Dong (khong them)" : "Giam so luong"
+                      quantity <= 1 ? "Đóng (không thêm)" : "Giảm số lượng"
                     }
                   >
                     −
@@ -444,7 +407,7 @@ function MenuItemDetailModal({
                     className="flex h-8 w-8 items-center justify-center rounded-lg text-base font-bold text-foreground active:bg-muted disabled:opacity-35"
                     disabled={!item.isAvailable}
                     onClick={handleIncrementQty}
-                    aria-label="Tang so luong"
+                    aria-label="Tăng số lượng"
                   >
                     +
                   </button>
@@ -467,13 +430,7 @@ function MenuItemDetailModal({
               </div>
             ) : null}
 
-            <NoteSection
-              open={noteOpen}
-              value={note}
-              preview={preview}
-              onToggle={handleToggleNote}
-              onChange={handleNoteChange}
-            />
+            <NoteSection value={note} onChange={handleNoteChange} />
 
             <div className="h-4" />
           </div>
@@ -490,7 +447,7 @@ function MenuItemDetailModal({
               {item.isAvailable ? (
                 <>
                   <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
-                    <span>Them vao gio hang</span>
+                    <span>Thêm vào giỏ hàng</span>
                   </span>
                   <span className="shrink-0 tabular-nums opacity-95">
                     {formatPrice(lineTotal)}

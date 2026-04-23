@@ -25,8 +25,8 @@ export function SupportCallButton({ tableCode }: SupportCallButtonProps) {
         variant="outline"
         onClick={requestSupport}
         disabled={!isConnected || isSubmitting}
-        aria-label="Goi nhan vien ho tro"
-        title="Goi nhan vien ho tro"
+        aria-label="Gọi nhân viên hỗ trợ"
+        title="Gọi nhân viên hỗ trợ"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
           <path

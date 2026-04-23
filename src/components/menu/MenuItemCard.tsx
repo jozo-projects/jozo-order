@@ -17,7 +17,7 @@ export function MenuItemCard({ item, onTap, onAdd }: MenuItemCardProps) {
     <div
       onClick={() => onTap(item)}
       className={cn(
-        "flex gap-3 px-4 py-3 transition-colors active:bg-muted/50",
+        "m-3 flex gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-[0_6px_16px_rgba(195,10,10,0.08)] transition-colors active:bg-muted/50",
         !item.isAvailable && "opacity-50"
       )}
     >
@@ -51,7 +51,7 @@ export function MenuItemCard({ item, onTap, onAdd }: MenuItemCardProps) {
           </span>
           {!item.isAvailable && (
             <span className="text-[10px] font-medium text-destructive">
-              Het mon
+              Hết món
             </span>
           )}
         </div>

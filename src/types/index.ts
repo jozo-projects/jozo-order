@@ -68,13 +68,12 @@ export interface CreateOrderPayload {
 /** Chi "drink" | "snack" — dung dung chu thuong (wire submit-cart). */
 export type FnbCategory = "drink" | "snack";
 
-export interface CartSelection {
+export type FNBOrderSelection = {
   groupKey: string;
   optionKey: string;
-}
+};
 
-/** Mot dong trong cart.lines[] (POST submit-cart). */
-export interface CoffeeSubmitCartLine {
+export type FNBOrderLine = {
   itemId: string;
   category: FnbCategory;
   /** So nguyen >= 1 */
@@ -82,8 +81,19 @@ export interface CoffeeSubmitCartLine {
   /** Chi state local / debug; server submit-cart gan id moi. */
   lineId?: string;
   note?: string;
-  selections?: CartSelection[];
-}
+  selections?: FNBOrderSelection[];
+};
+
+export type FNBOrder = {
+  lines: FNBOrderLine[];
+};
+
+export type SubmitCoffeeSessionCartPayload = {
+  cart: FNBOrder;
+};
+
+export type CartSelection = FNBOrderSelection;
+export type CoffeeSubmitCartLine = FNBOrderLine;
 
 /** Ten ngan gon (bang nghia CoffeeSubmitCartLine). */
 export type CartLine = CoffeeSubmitCartLine;
@@ -96,8 +106,8 @@ export type CartLine = CoffeeSubmitCartLine;
 export interface CoffeeSessionSubmitCartRequest {
   cart: {
     lines?: CoffeeSubmitCartLine[];
-    drinks: Record<string, number>;
-    snacks: Record<string, number>;
+    drinks?: Record<string, number>;
+    snacks?: Record<string, number>;
   };
 }
 
@@ -116,6 +126,7 @@ export interface CoffeeSessionOrderLineItem {
   menuItemId?: string;
   itemId?: string;
   name?: string;
+  note?: string;
   quantity: number;
   /** Gia niem yet / don vi (hien gach ngang neu khac charged). */
   listUnitPrice: number;
@@ -124,6 +135,7 @@ export interface CoffeeSessionOrderLineItem {
   /** Gia thuc te / don vi khach tra. */
   chargedUnitPrice: number;
   lineChargedTotal: number;
+  selections?: FNBOrderSelection[];
 }
 
 /** Document order gan voi session (wire API). */

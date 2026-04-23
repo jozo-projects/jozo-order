@@ -32,8 +32,8 @@ export function MenuSearch({ value, onChange, className }: MenuSearchProps) {
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Tim mon..."
-        className="h-10 w-full rounded-xl border border-border bg-muted/50 pl-10 pr-10 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+        placeholder="Tìm món..."
+        className="h-10 w-full rounded-xl border border-border bg-card pl-10 pr-10 text-sm outline-none placeholder:text-muted-foreground shadow-[0_4px_14px_rgba(195,10,10,0.06)] focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
       {value && (
         <button

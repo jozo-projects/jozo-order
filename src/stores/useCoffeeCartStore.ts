@@ -122,7 +122,7 @@ export function selectCartTotalCount(state: CoffeeCartState): number {
   return state.lines.reduce((a, l) => a + l.quantity, 0);
 }
 
-/** Payload gui len BFF: lines + legacy maps rong. */
+/** Payload gui len BFF: format chuan chi gom cart.lines. */
 export function buildSubmitCartPayload(
   lines: LocalCartLine[],
 ): CoffeeSessionSubmitCartRequest["cart"] {
@@ -139,9 +139,5 @@ export function buildSubmitCartPayload(
       return line;
     },
   );
-  return {
-    lines: wireLines,
-    drinks: {},
-    snacks: {},
-  };
+  return { lines: wireLines };
 }

@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Backend tra 401 cho /me: xoa cookie httpOnly qua API, refresh de ve TablePinUnlock.
+ * Backend trả 401 cho /me: xoá cookie httpOnly qua API, refresh để về TablePinUnlock.
  */
 export function ClearCoffeeSessionGate() {
   const router = useRouter();
-  const [message, setMessage] = useState("Dang cap nhat phien ban...");
+  const [message, setMessage] = useState("Đang cập nhật phiên bàn...");
 
   useEffect(() => {
     let cancelled = false;
@@ -18,12 +18,12 @@ export function ClearCoffeeSessionGate() {
           method: "POST",
         });
         if (!res.ok) {
-          if (!cancelled) setMessage("Khong the xoa phien, thu tai trang.");
+          if (!cancelled) setMessage("Không thể xoá phiên, vui lòng tải lại trang.");
           return;
         }
         if (!cancelled) router.refresh();
       } catch {
-        if (!cancelled) setMessage("Loi mang, thu tai trang.");
+        if (!cancelled) setMessage("Lỗi mạng, vui lòng tải lại trang.");
       }
     })();
     return () => {

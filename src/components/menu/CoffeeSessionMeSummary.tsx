@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CoffeeSessionOrderLineItem, MenuItem } from "@/types";
+import type {
+  CoffeeSessionOrderLineItem,
+  FNBOrderSelection,
+  MenuItem,
+} from "@/types";
 import { submitCoffeeSessionCart } from "@/lib/coffee-submit-cart-client";
+import { formatSelectionLabels } from "@/lib/menu-selection-labels";
 import {
   basePriceForBoardGame,
   optionsExtraForLine,
@@ -53,21 +58,47 @@ function parseOrderLineItem(raw: unknown): CoffeeSessionOrderLineItem | null {
     numField(o.lineChargedTotal ?? o.line_charged_total) ?? qty * chargedUnit;
 
   const name = typeof o.name === "string" ? o.name : undefined;
+  const note =
+    typeof o.note === "string" && o.note.trim().length > 0
+      ? o.note.trim()
+      : undefined;
   const id = pickLineItemId(o);
+  const selections = parseLineSelections(o.selections);
 
   return {
     menuItemId: id,
     itemId: id,
     name,
+    ...(note ? { note } : {}),
     quantity: qty,
     listUnitPrice: listUnit,
     lineListTotal: lineList,
     chargedUnitPrice: chargedUnit,
     lineChargedTotal: lineCharged,
+    ...(selections?.length ? { selections } : {}),
   };
 }
 
-/** Lay `result.order.lineItems` tu GET /client/coffee-sessions/me. */
+function parseLineSelections(raw: unknown): FNBOrderSelection[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const selections = raw
+    .map((entry) => {
+      if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+      const obj = entry as Record<string, unknown>;
+      const groupKey =
+        typeof obj.groupKey === "string" ? obj.groupKey.trim() : "";
+      const optionKey =
+        typeof obj.optionKey === "string" ? obj.optionKey.trim() : "";
+      if (!groupKey || !optionKey) return null;
+      return { groupKey, optionKey };
+    })
+    .filter((x): x is FNBOrderSelection => x != null);
+  return selections.length > 0 ? selections : undefined;
+}
+
+/** Lay `result.order.lineItems`/`result.order.lines` tu GET /client/coffee-sessions/me. */
 function trySessionLineItems(me: unknown): CoffeeSessionOrderLineItem[] {
   if (me == null || typeof me !== "object" || Array.isArray(me)) return [];
   const root = me as Record<string, unknown>;
@@ -89,9 +120,23 @@ function trySessionLineItems(me: unknown): CoffeeSessionOrderLineItem[] {
     const wrap = layer.order;
     if (wrap == null || typeof wrap !== "object" || Array.isArray(wrap))
       continue;
-    const items = (wrap as Record<string, unknown>).lineItems;
-    if (!Array.isArray(items)) continue;
-    const parsed = items
+    const wrapRecord = wrap as Record<string, unknown>;
+    const wrappedOrder = wrapRecord.order;
+    const wrappedOrderLines =
+      wrappedOrder &&
+      typeof wrappedOrder === "object" &&
+      !Array.isArray(wrappedOrder)
+        ? (wrappedOrder as Record<string, unknown>).lines
+        : null;
+    const itemsRaw = Array.isArray(wrapRecord.lineItems)
+      ? wrapRecord.lineItems
+      : Array.isArray(wrapRecord.lines)
+        ? wrapRecord.lines
+        : Array.isArray(wrappedOrderLines)
+          ? wrappedOrderLines
+          : null;
+    if (!itemsRaw) continue;
+    const parsed = itemsRaw
       .map(parseOrderLineItem)
       .filter((x): x is CoffeeSessionOrderLineItem => x != null);
     if (parsed.length > 0) return parsed;
@@ -224,6 +269,53 @@ function tryPeopleCount(me: unknown): number {
   return 0;
 }
 
+type SessionOrderTotals = {
+  fnbChargedTotal: number;
+  fnbListTotal: number;
+};
+
+function trySessionOrderTotals(me: unknown): SessionOrderTotals | null {
+  if (me == null || typeof me !== "object" || Array.isArray(me)) return null;
+  const root = me as Record<string, unknown>;
+  const layers: Record<string, unknown>[] = [];
+  if (
+    root.result &&
+    typeof root.result === "object" &&
+    !Array.isArray(root.result)
+  ) {
+    layers.push(root.result as Record<string, unknown>);
+  }
+  for (const key of ["data", "session"] as const) {
+    const x = root[key];
+    if (x && typeof x === "object" && !Array.isArray(x)) {
+      layers.push(x as Record<string, unknown>);
+    }
+  }
+
+  for (const layer of layers) {
+    const wrap = layer.order;
+    if (wrap == null || typeof wrap !== "object" || Array.isArray(wrap)) {
+      continue;
+    }
+    const totals = (wrap as Record<string, unknown>).orderTotals;
+    if (totals == null || typeof totals !== "object" || Array.isArray(totals)) {
+      continue;
+    }
+    const totalsObj = totals as Record<string, unknown>;
+    const charged = numField(
+      totalsObj.fnbChargedTotal ?? totalsObj.fnb_charged_total,
+    );
+    const list = numField(totalsObj.fnbListTotal ?? totalsObj.fnb_list_total);
+    if (charged == null && list == null) continue;
+    return {
+      fnbChargedTotal: charged ?? 0,
+      fnbListTotal: list ?? 0,
+    };
+  }
+
+  return null;
+}
+
 function orderLine(o: unknown, index: number): string {
   if (o == null) return `Don ${index + 1}`;
   if (typeof o === "string" || typeof o === "number") return String(o);
@@ -241,23 +333,12 @@ function orderLine(o: unknown, index: number): string {
   return `Don ${index + 1}`;
 }
 
-function formatLineSelections(
-  line: {
-    selections?: Array<{ groupKey: string; optionKey: string }>;
-  },
-  item: MenuItem | undefined,
-): string {
-  if (!line.selections?.length) return "";
-  const optionGroups = item?.options ?? [];
-  return line.selections
-    .map((s) => {
-      const group = optionGroups.find((g) => g.id === s.groupKey);
-      const choice = group?.choices.find((c) => c.id === s.optionKey);
-      if (!group?.name || !choice?.label) return "";
-      return `${group.name}: ${choice.label}`;
-    })
-    .filter((x) => x.length > 0)
-    .join(" · ");
+function pureLineItemName(rawName: string | undefined): string | undefined {
+  if (!rawName) return undefined;
+  const trimmed = rawName.trim();
+  if (!trimmed) return undefined;
+  const head = trimmed.split(" · ")[0]?.trim();
+  return head || undefined;
 }
 
 type CartLine = { itemId: string; categoryId: string; qty: number };
@@ -322,6 +403,18 @@ export function CoffeeSessionMePanel({
   const peopleCount = useMemo(() => tryPeopleCount(data), [data]);
   const lineItems = useMemo(() => trySessionLineItems(data), [data]);
   const useLineItems = lineItems.length > 0;
+  const orderTotals = useMemo(() => trySessionOrderTotals(data), [data]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    console.log("[orders-tab] raw data", data);
+  }, [data]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (!useLineItems) return;
+    console.log("[orders-tab] parsed lineItems", lineItems);
+  }, [lineItems, useLineItems]);
 
   const itemById = useMemo(() => {
     const m = new Map<string, MenuItem>();
@@ -379,6 +472,8 @@ export function CoffeeSessionMePanel({
     () => lineItems.reduce((a, l) => a + l.lineChargedTotal, 0),
     [lineItems],
   );
+  const listTotalDisplay = orderTotals?.fnbListTotal ?? listTotalSum;
+  const chargedTotalDisplay = orderTotals?.fnbChargedTotal ?? chargedTotalSum;
 
   const hasCart = useLineItems || cartLines.length > 0;
   const hasOrders = orders.length > 0;
@@ -390,7 +485,7 @@ export function CoffeeSessionMePanel({
         const item = itemById.get(line.itemId);
         const unit =
           basePriceForBoardGame(item) + optionsExtraForLine(item, line);
-        const selectionText = formatLineSelections(line, item);
+        const selectionText = formatSelectionLabels(line.selections, item);
         return {
           line,
           item,
@@ -432,7 +527,7 @@ export function CoffeeSessionMePanel({
 
       if (ok) {
         clearLocalCart();
-        setLocalCheckoutFeedback("Dat hang thanh cong!");
+        setLocalCheckoutFeedback("Đặt hàng thành công!");
         router.replace(`/${encodeURIComponent(tableCode)}?tab=orders`);
         router.refresh();
         return;
@@ -440,10 +535,10 @@ export function CoffeeSessionMePanel({
 
       setLocalCheckoutFeedback(
         (typeof payload?.message === "string" && payload.message) ||
-          "Dat hang that bai, thu lai.",
+          "Đặt hàng thất bại, vui lòng thử lại.",
       );
     } catch {
-      setLocalCheckoutFeedback("Loi mang, thu lai.");
+      setLocalCheckoutFeedback("Lỗi mạng, vui lòng thử lại.");
     } finally {
       setSubmittingLocalCheckout(false);
     }
@@ -453,7 +548,7 @@ export function CoffeeSessionMePanel({
     <div className={cn("px-4 pt-3", className)}>
       <header className="mb-4">
         <h1 className="text-xl font-bold tracking-tight text-foreground">
-          Don cua toi
+          Đơn của tôi
         </h1>
       </header>
 
@@ -461,10 +556,10 @@ export function CoffeeSessionMePanel({
         <div className="flex flex-col items-center rounded-2xl bg-muted/40 px-6 py-14 text-center">
           <div className="text-5xl">🧾</div>
           <p className="mt-4 text-sm font-medium text-foreground">
-            Chua co don nao
+            Chưa có đơn nào
           </p>
           <p className="mt-1 max-w-[240px] text-xs text-muted-foreground">
-            Dat mon o tab Menu — gio va don se hien o day.
+            Đặt món ở tab Thực đơn - giỏ và đơn sẽ hiện ở đây.
           </p>
         </div>
       ) : (
@@ -475,7 +570,7 @@ export function CoffeeSessionMePanel({
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs">
                   ✅
                 </span>
-                Xac nhan don truoc khi gui
+                Xác nhận đơn trước khi gửi
               </h2>
               <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
                 {hasLocalCart ? (
@@ -489,10 +584,10 @@ export function CoffeeSessionMePanel({
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium leading-snug text-foreground">
                               {item?.name ??
-                                `Mon #${line.itemId.slice(-Math.min(6, line.itemId.length))}`}
+                                `Món #${line.itemId.slice(-Math.min(6, line.itemId.length))}`}
                             </p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                              SL: {line.quantity} · {formatPrice(unit)}/mon
+                              SL: {line.quantity} · {formatPrice(unit)}/món
                             </p>
                             {line.note ? (
                               <p className="mt-0.5 text-xs text-foreground/80">
@@ -514,7 +609,7 @@ export function CoffeeSessionMePanel({
                   </ul>
                 ) : (
                   <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    Khong co mon nao de checkout.
+                    Không có món nào để checkout.
                   </p>
                 )}
                 <div className="border-t border-border bg-muted/30 px-4 py-3">
@@ -522,7 +617,7 @@ export function CoffeeSessionMePanel({
                     <p
                       className={cn(
                         "mb-2 rounded-lg px-3 py-2 text-sm",
-                        localCheckoutFeedback.includes("thanh cong")
+                        localCheckoutFeedback.includes("thành công")
                           ? "bg-primary text-primary-foreground"
                           : "bg-destructive text-destructive-foreground",
                       )}
@@ -531,7 +626,7 @@ export function CoffeeSessionMePanel({
                     </p>
                   ) : null}
                   <div className="mb-3 flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Tong tam tinh</span>
+                    <span className="text-muted-foreground">Tổng tạm tính</span>
                     <span className="text-base font-bold text-primary tabular-nums">
                       {formatPrice(localCheckoutTotal)}
                     </span>
@@ -543,8 +638,8 @@ export function CoffeeSessionMePanel({
                     onClick={handleConfirmLocalCheckout}
                   >
                     {submittingLocalCheckout
-                      ? "Dang gui..."
-                      : "Xac nhan dat hang"}
+                      ? "Đang gửi..."
+                      : "Xác nhận đặt hàng"}
                   </Button>
                 </div>
               </div>
@@ -557,7 +652,7 @@ export function CoffeeSessionMePanel({
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs">
                   🛒
                 </span>
-                Gio hang
+                Giỏ hàng
               </h2>
               <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
                 <ul className="divide-y divide-border">
@@ -565,12 +660,16 @@ export function CoffeeSessionMePanel({
                     ? lineItems.map((line, idx) => {
                         const id = line.menuItemId ?? line.itemId ?? "";
                         const it = id ? itemById.get(id) : undefined;
+                        const selectionText = formatSelectionLabels(
+                          line.selections,
+                          it,
+                        );
                         const name =
-                          line.name ??
+                          pureLineItemName(line.name) ??
                           it?.name ??
                           (id
-                            ? `Mon #${id.slice(-Math.min(6, id.length))}`
-                            : `Mon ${idx + 1}`);
+                            ? `Món #${id.slice(-Math.min(6, id.length))}`
+                            : `Món ${idx + 1}`);
                         const showListStrike =
                           line.lineListTotal > line.lineChargedTotal + 0.0001;
                         const showUnitStrike =
@@ -599,10 +698,20 @@ export function CoffeeSessionMePanel({
                                   line.listUnitPrice > 0 ? (
                                   <>
                                     {" "}
-                                    · {formatPrice(line.chargedUnitPrice)}/mon
+                                    · {formatPrice(line.chargedUnitPrice)}/món
                                   </>
                                 ) : null}
                               </p>
+                              {line.note ? (
+                                <p className="mt-0.5 text-xs text-foreground/80">
+                                  Ghi chú: {line.note}
+                                </p>
+                              ) : null}
+                              {selectionText ? (
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  Tùy chọn: {selectionText}
+                                </p>
+                              ) : null}
                             </div>
                             <div className="shrink-0 text-right tabular-nums">
                               {showListStrike ? (
@@ -626,7 +735,7 @@ export function CoffeeSessionMePanel({
                         const it = itemById.get(line.itemId);
                         const name =
                           it?.name ??
-                          `Mon #${line.itemId.slice(-Math.min(6, line.itemId.length))}`;
+                          `Món #${line.itemId.slice(-Math.min(6, line.itemId.length))}`;
                         const unit = basePriceForBoardGame(it);
                         const lineTotal = unit * line.chargedQty;
                         const freeQty =
@@ -645,13 +754,13 @@ export function CoffeeSessionMePanel({
                               <p className="mt-0.5 text-xs text-muted-foreground">
                                 SL: {line.qty}
                                 {line.categoryId === "drink" && freeQty > 0
-                                  ? ` · mien phi ${freeQty}`
+                                  ? ` · miễn phí ${freeQty}`
                                   : null}
                                 {line.categoryId === "drink" &&
                                 line.chargedQty > 0
-                                  ? ` · tinh tien ${line.chargedQty}`
+                                  ? ` · tính tiền ${line.chargedQty}`
                                   : null}
-                                {it ? ` · ${formatPrice(unit)}/mon` : null}
+                                {it ? ` · ${formatPrice(unit)}/món` : null}
                               </p>
                             </div>
                             <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
@@ -663,22 +772,12 @@ export function CoffeeSessionMePanel({
                 </ul>
                 {useLineItems ? (
                   <div className="space-y-1 border-t border-border bg-muted/30 px-4 py-3">
-                    {listTotalSum > chargedTotalSum + 0.0001 ? (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          Gia niem yet
-                        </span>
-                        <span className="text-muted-foreground line-through tabular-nums">
-                          {formatPrice(listTotalSum)}
-                        </span>
-                      </div>
-                    ) : null}
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium text-foreground">
-                        Tam tinh (thuc tra)
+                        Tạm tính (thực trả)
                       </span>
                       <span className="text-base font-bold text-primary tabular-nums">
-                        {formatPrice(chargedTotalSum)}
+                        {formatPrice(chargedTotalDisplay)}
                       </span>
                     </div>
                   </div>
@@ -686,7 +785,7 @@ export function CoffeeSessionMePanel({
                   cartTotalMenu > 0 && (
                     <div className="flex items-center justify-between border-t border-border bg-muted/30 px-4 py-3">
                       <span className="text-sm text-muted-foreground">
-                        Tam tinh
+                        Tạm tính
                       </span>
                       <span className="text-base font-bold text-primary">
                         {formatPrice(cartTotalMenu)}
@@ -704,7 +803,7 @@ export function CoffeeSessionMePanel({
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs">
                   📋
                 </span>
-                Lich su don hang
+                Lịch sử đơn hàng
               </h2>
               <ul className="space-y-2">
                 {orders.map((o, i) => (

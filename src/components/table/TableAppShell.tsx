@@ -136,8 +136,8 @@ export function TableAppShell({
       </div>
 
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/98 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-md supports-backdrop-filter:bg-background/90"
-        aria-label="Dieu huong chinh"
+        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/98 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1 shadow-[0_-8px_24px_rgba(195,10,10,0.12)] backdrop-blur-md supports-backdrop-filter:bg-background/92"
+        aria-label="Điều hướng chính"
       >
         <div className="mx-auto flex max-w-md items-stretch justify-around px-1">
           <button
@@ -157,7 +157,7 @@ export function TableAppShell({
                 tab === "menu" ? "text-primary" : "text-muted-foreground",
               )}
             >
-              Menu
+              Thực đơn
             </span>
           </button>
           <button
@@ -184,7 +184,7 @@ export function TableAppShell({
                 tab === "orders" ? "text-primary" : "text-muted-foreground",
               )}
             >
-              Don cua toi
+              Đơn của tôi
             </span>
           </button>
           <button
@@ -204,7 +204,7 @@ export function TableAppShell({
                 tab === "guide" ? "text-primary" : "text-muted-foreground",
               )}
             >
-              Board game
+              Trò chơi bàn
             </span>
           </button>
         </div>

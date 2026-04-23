@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { submitCoffeeSessionCart } from "@/lib/coffee-submit-cart-client";
+import { formatSelectionLabels } from "@/lib/menu-selection-labels";
 import {
   basePriceForBoardGame,
   optionsExtraForLine,
@@ -59,27 +60,21 @@ function validateLineSelections(
   item: MenuItem,
 ): string | null {
   const optionGroups = item.options ?? [];
-  if (optionGroups.length === 0) {
-    if (line.selections?.length) {
-      return `Mon "${item.name}" khong ho tro tuy chon, vui long bo selections.`;
-    }
-    return null;
-  }
 
   const selections = line.selections ?? [];
   const byGroup = new Map<string, Set<string>>();
   for (const s of selections) {
     const group = optionGroups.find((g) => g.id === s.groupKey);
     if (!group) {
-      return `Mon "${item.name}" co groupKey khong hop le: "${s.groupKey}".`;
+      return `Món "${item.name}" có groupKey không hợp lệ: "${s.groupKey}".`;
     }
     const optionExists = group.choices.some((c) => c.id === s.optionKey);
     if (!optionExists) {
-      return `Mon "${item.name}" co optionKey khong hop le: "${s.optionKey}" trong group "${s.groupKey}".`;
+      return `Món "${item.name}" có optionKey không hợp lệ: "${s.optionKey}" trong nhóm "${s.groupKey}".`;
     }
     const cur = byGroup.get(s.groupKey) ?? new Set<string>();
     if (cur.has(s.optionKey)) {
-      return `Mon "${item.name}" bi trung option "${s.optionKey}" trong group "${s.groupKey}".`;
+      return `Món "${item.name}" bị trùng option "${s.optionKey}" trong nhóm "${s.groupKey}".`;
     }
     cur.add(s.optionKey);
     byGroup.set(s.groupKey, cur);
@@ -91,10 +86,10 @@ function validateLineSelections(
     const maxSelect =
       normalizeSelectBound(group.maxSelect) ?? Number.POSITIVE_INFINITY;
     if (selectedCount < minSelect) {
-      return `Mon "${item.name}" chua du lua chon cho nhom "${group.name}" (toi thieu ${minSelect}).`;
+      return `Món "${item.name}" chưa đủ lựa chọn cho nhóm "${group.name}" (tối thiểu ${minSelect}).`;
     }
     if (selectedCount > maxSelect) {
-      return `Mon "${item.name}" vuot so lua chon cho nhom "${group.name}" (toi da ${maxSelect}).`;
+      return `Món "${item.name}" vượt số lựa chọn cho nhóm "${group.name}" (tối đa ${maxSelect}).`;
     }
   }
 
@@ -108,10 +103,10 @@ function validateCartBeforeSubmit(
   for (const line of lines) {
     const item = itemById.get(line.itemId);
     if (!item) {
-      return `Khong tim thay mon tuong ung itemId "${line.itemId}".`;
+      return `Không tìm thấy món tương ứng itemId "${line.itemId}".`;
     }
     if (!item.isAvailable) {
-      return `Mon "${item.name}" hien khong kha dung de dat.`;
+      return `Món "${item.name}" hiện không khả dụng để đặt.`;
     }
     const selectionError = validateLineSelections(line, item);
     if (selectionError) return selectionError;
@@ -142,23 +137,6 @@ function estimateCartTotal(
   return total;
 }
 
-function formatSelectionDebug(
-  line: LocalCartLine,
-  menuItem: MenuItem | undefined,
-): string {
-  if (!line.selections?.length) return "";
-  const optionGroups = menuItem?.options ?? [];
-  return line.selections
-    .map((s) => {
-      const group = optionGroups.find((g) => g.id === s.groupKey);
-      const choice = group?.choices.find((c) => c.id === s.optionKey);
-      const groupText = group?.name ?? s.groupKey;
-      const choiceText = choice?.label ?? s.optionKey;
-      return `${groupText}: ${choiceText}`;
-    })
-    .join(" · ");
-}
-
 interface CartLineRowProps {
   line: LocalCartLine;
   menuItem: MenuItem | undefined;
@@ -174,11 +152,11 @@ function CartLineRow({
   onDecrement,
   onIncrement,
 }: CartLineRowProps) {
-  const name = menuItem?.name ?? `Mon #${line.itemId.slice(-6)}`;
+  const name = menuItem?.name ?? `Món #${line.itemId.slice(-6)}`;
   const unit =
     basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
   const lineTotal = unit * line.quantity;
-  const selectionText = formatSelectionDebug(line, menuItem);
+  const selectionText = formatSelectionLabels(line.selections, menuItem);
   const canAddMore = menuItem?.isAvailable !== false;
 
   const handleMinus = () => {
@@ -189,7 +167,7 @@ function CartLineRow({
     onIncrement(line);
   };
 
-  const minusLabel = line.quantity <= 1 ? "Xoa khoi gio" : "Giam so luong";
+  const minusLabel = line.quantity <= 1 ? "Xoá khỏi giỏ" : "Giảm số lượng";
 
   return (
     <li className="rounded-xl border border-border p-3">
@@ -197,7 +175,7 @@ function CartLineRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{name}</p>
           <p className="text-xs text-muted-foreground">
-            {formatPrice(unit)} / mon ·{" "}
+            {formatPrice(unit)} / món ·{" "}
             <span className="capitalize">{CATEGORY_LABEL[line.category]}</span>
           </p>
           {line.note ? (
@@ -321,8 +299,14 @@ export function MenuCartBar({
     setFeedback(null);
     try {
       const cart = buildSubmitCartPayload(lines);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[submit-cart] payload", { cart });
+      }
       const { ok, status, data } = await submitCoffeeSessionCart(cart);
-      const payload = data as { sessionInvalid?: boolean; message?: string } | null;
+      const payload = data as {
+        sessionInvalid?: boolean;
+        message?: string;
+      } | null;
 
       if (status === 401 && payload?.sessionInvalid) {
         await fetch("/api/client/coffee-sessions/clear", { method: "POST" });
@@ -335,7 +319,7 @@ export function MenuCartBar({
       if (ok) {
         clear();
         closeCart();
-        setFeedback("Dat hang thanh cong!");
+        setFeedback("Đặt hàng thành công!");
         window.setTimeout(() => setFeedback(null), 3200);
         router.replace(`/${encodeURIComponent(tableCode)}?tab=orders`);
         router.refresh();
@@ -344,10 +328,10 @@ export function MenuCartBar({
 
       const msg =
         (typeof payload?.message === "string" && payload.message) ||
-        "Dat hang that bai, thu lai.";
+        "Đặt hàng thất bại, vui lòng thử lại.";
       setFeedback(msg);
     } catch {
-      setFeedback("Loi mang, thu lai.");
+      setFeedback("Lỗi mạng, vui lòng thử lại.");
     } finally {
       setSubmitting(false);
     }
@@ -379,7 +363,7 @@ export function MenuCartBar({
             insetBottomNav
               ? "bottom-[calc(var(--app-tab-bar)+5.5rem)]"
               : "bottom-22",
-            feedback.includes("thanh cong")
+            feedback.includes("thành công")
               ? "bg-primary text-primary-foreground"
               : "bg-destructive text-destructive-foreground",
           )}
@@ -401,7 +385,7 @@ export function MenuCartBar({
             <button
               type="button"
               onClick={openCart}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-left transition-colors active:bg-muted"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left shadow-[0_8px_20px_rgba(195,10,10,0.08)] transition-colors active:bg-muted"
             >
               <span className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <IconCart />
@@ -409,6 +393,8 @@ export function MenuCartBar({
                   {totalCount > 99 ? "99+" : totalCount}
                 </span>
               </span>
+
+              <span className="text-muted-foreground">Giỏ hàng</span>
             </button>
             <Button
               size="lg"
@@ -416,7 +402,7 @@ export function MenuCartBar({
               onClick={handleSubmit}
               disabled={submitting}
             >
-              {submitting ? "Dang gui..." : "Confirm"}
+              {submitting ? "Đang gửi..." : "Xác nhận đặt món"}
             </Button>
           </div>
         </div>
@@ -434,20 +420,20 @@ export function MenuCartBar({
               <div className="h-1 w-10 rounded-full bg-border" />
             </div>
             <div className="flex items-center justify-between border-b border-border px-4 pb-3">
-              <h2 className="text-lg font-bold">Gio hang</h2>
+              <h2 className="text-lg font-bold">Giỏ hàng</h2>
               <button
                 type="button"
                 className="text-sm text-muted-foreground"
                 disabled={submitting}
                 onClick={closeCart}
               >
-                Dong
+                Đóng
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {lines.length === 0 ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">
-                  Gio trong
+                  Giỏ trống
                 </p>
               ) : (
                 <ul className="space-y-3">
@@ -466,7 +452,7 @@ export function MenuCartBar({
             </div>
             <div className="border-t border-border px-4 py-4">
               <div className="mb-3 flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Tam tinh</span>
+                <span className="text-muted-foreground">Tạm tính</span>
                 <span className="text-lg font-bold text-primary">
                   {formatPrice(estimatedTotal)}
                 </span>
@@ -477,7 +463,7 @@ export function MenuCartBar({
                 disabled={lines.length === 0 || submitting}
                 onClick={handleSubmit}
               >
-                {submitting ? "Dang gui..." : "Confirm"}
+                {submitting ? "Đang gửi..." : "Xác nhận đặt món"}
               </Button>
             </div>
           </div>
