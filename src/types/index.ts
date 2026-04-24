@@ -31,6 +31,20 @@ export interface MenuItemOptionChoice {
   priceAdjustment: number;
 }
 
+export interface BoardGameGuideItem {
+  id: string;
+  name: string;
+  slug: string;
+  shortDescription: string;
+  guideContent: string;
+  image: string | null;
+  minPlayers: number | null;
+  maxPlayers: number | null;
+  playTimeMinutes: number | null;
+  playersText: string;
+  learnMinutesText: string;
+}
+
 export interface CartItem {
   menuItem: MenuItem;
   quantity: number;

@@ -10,6 +10,7 @@ import {
   type CustomizationGroupTemplateDoc,
   type FnbRawOptionGroup,
 } from "./fnb-menu-options";
+import type { BoardGameGuideItem } from "@/types";
 
 export async function getTableByCode(code: string) {
   await connectDB();
@@ -46,6 +47,26 @@ type FnbMenuItemDoc = {
   inventory?: { quantity?: number };
   options?: FnbRawOptionGroup[];
   customizationGroups?: FnbRawOptionGroup[];
+};
+
+type RawBoardGameDoc = {
+  _id: unknown;
+  name?: string;
+  slug?: string;
+  shortDescription?: string;
+  guideContent?: string;
+  images?: unknown;
+  players?: unknown;
+  playerRange?: unknown;
+  recommendedPlayers?: unknown;
+  playerCount?: unknown;
+  minPlayers?: unknown;
+  maxPlayers?: unknown;
+  playTimeMinutes?: unknown;
+  learnMinutes?: unknown;
+  estimatedLearnMinutes?: unknown;
+  introductionMinutes?: unknown;
+  tutorialMinutes?: unknown;
 };
 
 export async function getFnbMenuData() {
@@ -88,4 +109,242 @@ export async function getFnbMenuData() {
   }));
 
   return { categories, items };
+}
+
+function toCleanString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function toPositiveNumber(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.round(value);
+}
+
+function pickPlayersText(doc: RawBoardGameDoc): string {
+  const fromTextFields = [
+    doc.players,
+    doc.playerRange,
+    doc.recommendedPlayers,
+    doc.playerCount,
+  ]
+    .map(toCleanString)
+    .find((value) => value != null);
+  if (fromTextFields) return fromTextFields;
+
+  const minPlayers = toPositiveNumber(doc.minPlayers);
+  const maxPlayers = toPositiveNumber(doc.maxPlayers);
+  if (minPlayers && maxPlayers) {
+    return minPlayers === maxPlayers
+      ? `${minPlayers} người`
+      : `${minPlayers}-${maxPlayers} người`;
+  }
+  if (minPlayers) return `${minPlayers}+ người`;
+  if (maxPlayers) return `tối đa ${maxPlayers} người`;
+
+  return "Đang cập nhật số người chơi";
+}
+
+function pickLearnMinutesText(doc: RawBoardGameDoc): string {
+  const minutes = [
+    doc.playTimeMinutes,
+    doc.learnMinutes,
+    doc.estimatedLearnMinutes,
+    doc.introductionMinutes,
+    doc.tutorialMinutes,
+  ]
+    .map(toPositiveNumber)
+    .find((value) => value != null);
+  if (minutes) return `~${minutes} phút làm quen`;
+
+  return "Đang cập nhật thời gian làm quen";
+}
+
+export async function getBoardGameGuideData(): Promise<BoardGameGuideItem[]> {
+  await connectDB();
+
+  const docs = (await MenuItem.db
+    .collection("games")
+    .aggregate([
+      { $match: { isActive: true } },
+      {
+        $addFields: {
+          normalizedTypeId: {
+            $convert: {
+              input: "$typeId",
+              to: "objectId",
+              onError: null,
+              onNull: null,
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "game_types",
+          localField: "normalizedTypeId",
+          foreignField: "_id",
+          as: "gameTypeDoc",
+        },
+      },
+      {
+        $addFields: {
+          gameTypeLabel: {
+            $ifNull: [
+              "$gameTypeLabel",
+              {
+                slug: { $arrayElemAt: ["$gameTypeDoc.slug", 0] },
+                name: { $arrayElemAt: ["$gameTypeDoc.name", 0] },
+                description: { $arrayElemAt: ["$gameTypeDoc.description", 0] },
+              },
+            ],
+          },
+        },
+      },
+      { $match: { "gameTypeLabel.slug": "board-game" } },
+      { $sort: { name: 1 } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          slug: 1,
+          shortDescription: 1,
+          guideContent: 1,
+          images: 1,
+          players: 1,
+          playerRange: 1,
+          recommendedPlayers: 1,
+          playerCount: 1,
+          minPlayers: 1,
+          maxPlayers: 1,
+          playTimeMinutes: 1,
+          learnMinutes: 1,
+          estimatedLearnMinutes: 1,
+          introductionMinutes: 1,
+          tutorialMinutes: 1,
+        },
+      },
+    ])
+    .toArray()) as RawBoardGameDoc[];
+
+  return docs.map((doc) => {
+    const firstImage = Array.isArray(doc.images)
+      ? doc.images.find((item) => typeof item === "string")
+      : null;
+
+    const minPlayers = toPositiveNumber(doc.minPlayers);
+    const maxPlayers = toPositiveNumber(doc.maxPlayers);
+    const playTimeMinutes = toPositiveNumber(doc.playTimeMinutes);
+
+    return {
+      id: String(doc._id),
+      name: toCleanString(doc.name) ?? "Board game",
+      slug: toCleanString(doc.slug) ?? String(doc._id),
+      shortDescription: toCleanString(doc.shortDescription) ?? "",
+      guideContent: toCleanString(doc.guideContent) ?? "",
+      image: firstImage ?? null,
+      minPlayers,
+      maxPlayers,
+      playTimeMinutes,
+      playersText: pickPlayersText(doc),
+      learnMinutesText: pickLearnMinutesText(doc),
+    };
+  });
+}
+
+export async function getBoardGameGuideBySlug(
+  slug: string,
+): Promise<BoardGameGuideItem | null> {
+  await connectDB();
+
+  const docs = (await MenuItem.db
+    .collection("games")
+    .aggregate([
+      { $match: { isActive: true, slug } },
+      {
+        $addFields: {
+          normalizedTypeId: {
+            $convert: {
+              input: "$typeId",
+              to: "objectId",
+              onError: null,
+              onNull: null,
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "game_types",
+          localField: "normalizedTypeId",
+          foreignField: "_id",
+          as: "gameTypeDoc",
+        },
+      },
+      {
+        $addFields: {
+          gameTypeLabel: {
+            $ifNull: [
+              "$gameTypeLabel",
+              {
+                slug: { $arrayElemAt: ["$gameTypeDoc.slug", 0] },
+                name: { $arrayElemAt: ["$gameTypeDoc.name", 0] },
+                description: { $arrayElemAt: ["$gameTypeDoc.description", 0] },
+              },
+            ],
+          },
+        },
+      },
+      { $match: { "gameTypeLabel.slug": "board-game" } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          slug: 1,
+          shortDescription: 1,
+          guideContent: 1,
+          images: 1,
+          players: 1,
+          playerRange: 1,
+          recommendedPlayers: 1,
+          playerCount: 1,
+          minPlayers: 1,
+          maxPlayers: 1,
+          playTimeMinutes: 1,
+          learnMinutes: 1,
+          estimatedLearnMinutes: 1,
+          introductionMinutes: 1,
+          tutorialMinutes: 1,
+        },
+      },
+      { $limit: 1 },
+    ])
+    .toArray()) as RawBoardGameDoc[];
+
+  if (docs.length === 0) return null;
+
+  const doc = docs[0];
+  const firstImage = Array.isArray(doc.images)
+    ? doc.images.find((item) => typeof item === "string")
+    : null;
+  const minPlayers = toPositiveNumber(doc.minPlayers);
+  const maxPlayers = toPositiveNumber(doc.maxPlayers);
+  const playTimeMinutes = toPositiveNumber(doc.playTimeMinutes);
+
+  return {
+    id: String(doc._id),
+    name: toCleanString(doc.name) ?? "Board game",
+    slug: toCleanString(doc.slug) ?? String(doc._id),
+    shortDescription: toCleanString(doc.shortDescription) ?? "",
+    guideContent: toCleanString(doc.guideContent) ?? "",
+    image: firstImage ?? null,
+    minPlayers,
+    maxPlayers,
+    playTimeMinutes,
+    playersText: pickPlayersText(doc),
+    learnMinutesText: pickLearnMinutesText(doc),
+  };
 }

@@ -1,4 +1,4 @@
-import { getFnbMenuData, getTableByCode } from "@/lib/api";
+import { getBoardGameGuideData, getFnbMenuData, getTableByCode } from "@/lib/api";
 import { TableAppShell } from "@/components/table/TableAppShell";
 import { ClearCoffeeSessionGate } from "@/components/table/ClearCoffeeSessionGate";
 import { TablePinUnlock } from "@/components/table/TablePinUnlock";
@@ -42,6 +42,7 @@ export default async function OrderPage({
 
   const { categories: rawCategories, items: rawMenuItems } =
     await getFnbMenuData();
+  const boardGames = await getBoardGameGuideData();
 
   const categories: Category[] = rawCategories.map((c) => ({
     id: c.id,
@@ -87,6 +88,7 @@ export default async function OrderPage({
     <TableAppShell
       categories={categories}
       items={items}
+      boardGames={boardGames}
       tableCode={tableId}
       coffeeMe={coffeeMe}
     />

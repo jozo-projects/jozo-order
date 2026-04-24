@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { Category, MenuItem } from "@/types";
+import type { BoardGameGuideItem, Category, MenuItem } from "@/types";
 import { MenuView } from "@/components/menu/MenuView";
 import { cn } from "@/lib/utils";
 import {
@@ -83,6 +83,7 @@ function IconDice({ active }: { active: boolean }) {
 interface TableAppShellProps {
   categories: Category[];
   items: MenuItem[];
+  boardGames: BoardGameGuideItem[];
   tableCode: string;
   coffeeMe: unknown | null;
 }
@@ -90,6 +91,7 @@ interface TableAppShellProps {
 export function TableAppShell({
   categories,
   items,
+  boardGames,
   tableCode,
   coffeeMe,
 }: TableAppShellProps) {
@@ -132,7 +134,9 @@ export function TableAppShell({
             className="pb-2"
           />
         )}
-        {tab === "guide" && <BoardGameGuideTab />}
+        {tab === "guide" && (
+          <BoardGameGuideTab games={boardGames} tableCode={tableCode} />
+        )}
       </div>
 
       <nav
@@ -204,7 +208,7 @@ export function TableAppShell({
                 tab === "guide" ? "text-primary" : "text-muted-foreground",
               )}
             >
-              Trò chơi bàn
+              Hướng dẫn
             </span>
           </button>
         </div>
