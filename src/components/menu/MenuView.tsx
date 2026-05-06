@@ -14,6 +14,8 @@ interface MenuViewProps {
   items: MenuItem[];
   tableCode: string;
   insetBottomNav?: boolean;
+  peopleCount?: number;
+  freeDrinkQuota?: number;
 }
 
 function filterMenuItems(
@@ -44,16 +46,31 @@ export function MenuView({
   items,
   tableCode,
   insetBottomNav = false,
+  peopleCount = 0,
+  freeDrinkQuota = 0,
 }: MenuViewProps) {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [showDrinkInfo, setShowDrinkInfo] = useState(false);
   const addFromMenu = useCoffeeCartStore((s) => s.addFromMenu);
+  const lines = useCoffeeCartStore((s) => s.lines);
 
   const filteredItems = useMemo(
     () => filterMenuItems(items, activeCategoryId, searchQuery),
     [items, activeCategoryId, searchQuery],
   );
+  const drinkQtyInCart = useMemo(
+    () =>
+      lines.reduce(
+        (sum, line) => sum + (line.category === "drink" ? line.quantity : 0),
+        0,
+      ),
+    [lines],
+  );
+  const remainingFreeDrink = Math.max(0, freeDrinkQuota - drinkQtyInCart);
+  const orderedDrinkQty = Math.max(0, peopleCount - freeDrinkQuota);
+  const totalDrinkQty = orderedDrinkQty + drinkQtyInCart;
 
   const openItemDetail = useCallback((item: MenuItem) => {
     setSelectedItem(item);
@@ -90,6 +107,7 @@ export function MenuView({
           items={items}
           tableCode={tableCode}
           insetBottomNav={insetBottomNav}
+          freeDrinkQuota={freeDrinkQuota}
         />
       </>
     );
@@ -97,6 +115,54 @@ export function MenuView({
 
   return (
     <>
+      <div className="px-4 pt-2">
+        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+          <p>
+            Nước đã gọi: {totalDrinkQty}/{peopleCount} ly
+          </p>
+          <button
+            type="button"
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] leading-none"
+            onClick={() => setShowDrinkInfo(true)}
+            aria-label="Giải thích cách tính số ly nước"
+          >
+            i
+          </button>
+        </div>
+      </div>
+      {showDrinkInfo ? (
+        <div className="fixed inset-0 z-110 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setShowDrinkInfo(false)}
+            aria-label="Đóng giải thích"
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-background p-4 shadow-2xl">
+            <h3 className="text-sm font-semibold text-foreground">
+              Cách tính số ly nước
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Mỗi người tương ứng 1 ly theo gói bàn đã đăng ký. Chỉ số{" "}
+              <span className="font-medium text-foreground">
+                {totalDrinkQty}/{peopleCount}
+              </span>{" "}
+              nghĩa là bàn mình đã gọi {totalDrinkQty} ly trên tổng {peopleCount}{" "}
+              người.
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Ly vượt quá số người sẽ được tính theo giá niêm yết khi thêm vào giỏ.
+            </p>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+              onClick={() => setShowDrinkInfo(false)}
+            >
+              Đã hiểu
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="px-4 pt-3 pb-1">
         <MenuSearch value={searchQuery} onChange={setSearchQuery} />
       </div>
@@ -117,6 +183,7 @@ export function MenuView({
             <MenuItemCard
               key={item.id}
               item={item}
+              remainingFreeDrink={remainingFreeDrink}
               onTap={openItemDetail}
               onAdd={openItemDetail}
             />
@@ -142,6 +209,7 @@ export function MenuView({
 
       <MenuItemDetail
         item={selectedItem}
+        remainingFreeDrink={remainingFreeDrink}
         onClose={closeItemDetail}
         onAdd={handleAddFromDetail}
       />
@@ -150,6 +218,7 @@ export function MenuView({
         items={items}
         tableCode={tableCode}
         insetBottomNav={insetBottomNav}
+        freeDrinkQuota={freeDrinkQuota}
       />
     </>
   );

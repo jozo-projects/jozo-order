@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/Button";
 import { submitCoffeeSessionCart } from "@/lib/coffee-submit-cart-client";
 import { formatSelectionLabels } from "@/lib/menu-selection-labels";
 import {
-  basePriceForBoardGame,
   optionsExtraForLine,
 } from "@/lib/menu-item-pricing";
 import { formatPrice, cn } from "@/lib/utils";
+import { useDraggableBottomSheet } from "@/components/ui/useDraggableBottomSheet";
 import {
   buildSubmitCartPayload,
   selectCartTotalCount,
@@ -22,6 +22,7 @@ interface MenuCartBarProps {
   items: MenuItem[];
   tableCode: string;
   insetBottomNav?: boolean;
+  freeDrinkQuota?: number;
 }
 
 const CATEGORY_LABEL: Record<FnbCategory, string> = {
@@ -122,42 +123,79 @@ function buildItemMap(items: MenuItem[]): Map<string, MenuItem> {
   return m;
 }
 
-function estimateCartTotal(
+type PricedCartLine = {
+  line: LocalCartLine;
+  menuItem: MenuItem | undefined;
+  freeDrinkQty: number;
+  chargedDrinkQty: number;
+  baseUnitPrice: number;
+  chargedUnitPrice: number;
+  lineTotal: number;
+};
+
+function priceCartLinesWithDrinkQuota(
   lines: LocalCartLine[],
   itemById: Map<string, MenuItem>,
-): number {
-  let total = 0;
+  freeDrinkQuota: number,
+): PricedCartLine[] {
+  let remainingFreeDrink = Math.max(0, Math.floor(freeDrinkQuota));
+  const priced: PricedCartLine[] = [];
   for (const line of lines) {
     const menuItem = itemById.get(line.itemId);
     if (!menuItem) continue;
-    const unit =
-      basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
-    total += unit * line.quantity;
+    const unitOptionsExtra = optionsExtraForLine(menuItem, line);
+    const isDrink = line.category === "drink";
+    const freeDrinkQty = isDrink ? Math.min(line.quantity, remainingFreeDrink) : 0;
+    const chargedDrinkQty = isDrink
+      ? Math.max(0, line.quantity - freeDrinkQty)
+      : line.quantity;
+    if (isDrink) {
+      remainingFreeDrink -= freeDrinkQty;
+    }
+    const baseUnitPrice = menuItem.price;
+    const chargedUnitPrice = baseUnitPrice + unitOptionsExtra;
+    const lineTotal = isDrink
+      ? chargedDrinkQty * menuItem.price + line.quantity * unitOptionsExtra
+      : line.quantity * chargedUnitPrice;
+    priced.push({
+      line,
+      menuItem,
+      freeDrinkQty,
+      chargedDrinkQty,
+      baseUnitPrice,
+      chargedUnitPrice,
+      lineTotal,
+    });
   }
-  return total;
+  return priced;
 }
 
 interface CartLineRowProps {
-  line: LocalCartLine;
-  menuItem: MenuItem | undefined;
+  pricedLine: PricedCartLine;
   submitting: boolean;
   onDecrement: (line: LocalCartLine) => void;
   onIncrement: (line: LocalCartLine) => void;
 }
 
 function CartLineRow({
-  line,
-  menuItem,
+  pricedLine,
   submitting,
   onDecrement,
   onIncrement,
 }: CartLineRowProps) {
+  const {
+    line,
+    menuItem,
+    freeDrinkQty,
+    chargedDrinkQty,
+    baseUnitPrice,
+    chargedUnitPrice,
+    lineTotal,
+  } = pricedLine;
   const name = menuItem?.name ?? `Món #${line.itemId.slice(-6)}`;
-  const unit =
-    basePriceForBoardGame(menuItem) + optionsExtraForLine(menuItem, line);
-  const lineTotal = unit * line.quantity;
   const selectionText = formatSelectionLabels(line.selections, menuItem);
   const canAddMore = menuItem?.isAvailable !== false;
+  const isDrink = line.category === "drink";
 
   const handleMinus = () => {
     onDecrement(line);
@@ -175,8 +213,20 @@ function CartLineRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{name}</p>
           <p className="text-xs text-muted-foreground">
-            {formatPrice(unit)} / món ·{" "}
-            <span className="capitalize">{CATEGORY_LABEL[line.category]}</span>
+            {isDrink ? (
+              freeDrinkQty > 0 ? (
+                <>
+                  Giá gốc {formatPrice(baseUnitPrice)} / ly · {freeDrinkQty} ly
+                  kèm vé
+                  {chargedDrinkQty > 0 ? ` · tính tiền ${chargedDrinkQty}` : ""}
+                </>
+              ) : (
+                <>{formatPrice(chargedUnitPrice)} / ly</>
+              )
+            ) : (
+              <>{formatPrice(chargedUnitPrice)} / món</>
+            )}{" "}
+            · <span className="capitalize">{CATEGORY_LABEL[line.category]}</span>
           </p>
           {line.note ? (
             <p className="mt-1 line-clamp-2 text-xs text-foreground/80">
@@ -223,6 +273,7 @@ export function MenuCartBar({
   items,
   tableCode,
   insetBottomNav = false,
+  freeDrinkQuota = 0,
 }: MenuCartBarProps) {
   const router = useRouter();
   const lines = useCoffeeCartStore((s) => s.lines);
@@ -234,6 +285,7 @@ export function MenuCartBar({
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [showFreeDrinkInfo, setShowFreeDrinkInfo] = useState(false);
 
   const prevTableCode = useRef<string | null>(null);
   useEffect(() => {
@@ -252,10 +304,24 @@ export function MenuCartBar({
 
   const itemById = useMemo(() => buildItemMap(items), [items]);
 
-  const estimatedTotal = useMemo(
-    () => estimateCartTotal(lines, itemById),
-    [lines, itemById],
+  const pricedLines = useMemo(
+    () => priceCartLinesWithDrinkQuota(lines, itemById, freeDrinkQuota),
+    [lines, itemById, freeDrinkQuota],
   );
+
+  const estimatedTotal = useMemo(
+    () => pricedLines.reduce((sum, x) => sum + x.lineTotal, 0),
+    [pricedLines],
+  );
+  const drinkQtyInCart = useMemo(
+    () =>
+      lines.reduce(
+        (sum, line) => sum + (line.category === "drink" ? line.quantity : 0),
+        0,
+      ),
+    [lines],
+  );
+  const freeDrinkLeft = Math.max(0, freeDrinkQuota - drinkQtyInCart);
 
   const openCart = useCallback(() => {
     setOpen(true);
@@ -269,6 +335,10 @@ export function MenuCartBar({
     if (submitting) return;
     closeCart();
   }, [submitting, closeCart]);
+  const { dragHandleProps, hasDragged, sheetStyle } = useDraggableBottomSheet({
+    onClose: handleBackdropClose,
+    disabled: submitting,
+  });
 
   const handleLineDecrement = useCallback(
     (line: LocalCartLine) => {
@@ -415,20 +485,59 @@ export function MenuCartBar({
             onClick={handleBackdropClose}
             aria-hidden
           />
-          <div className="relative flex h-[94dvh] w-full max-w-md flex-col rounded-t-3xl bg-background pb-safe shadow-2xl animate-slide-up">
-            <div className="flex justify-center pt-3 pb-2">
-              <div className="h-1 w-10 rounded-full bg-border" />
-            </div>
-            <div className="flex items-center justify-between border-b border-border px-4 pb-3">
-              <h2 className="text-lg font-bold">Giỏ hàng</h2>
-              <button
-                type="button"
-                className="text-sm text-muted-foreground"
-                disabled={submitting}
-                onClick={closeCart}
-              >
-                Đóng
-              </button>
+          <div
+            className={cn(
+              "relative flex h-[94dvh] w-full max-w-md flex-col rounded-t-3xl bg-background pb-safe shadow-2xl",
+              !hasDragged && "animate-slide-up",
+            )}
+            style={sheetStyle}
+          >
+            <div
+              {...dragHandleProps}
+              className={cn(
+                "shrink-0 border-b border-border pt-3",
+                dragHandleProps.className,
+              )}
+            >
+              <div className="flex justify-center pb-2">
+                <div className="h-1 w-10 rounded-full bg-border" />
+              </div>
+              <div className="flex items-center justify-between px-4 pb-3">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold">Giỏ hàng</h2>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <p>
+                      Đồ uống kèm vé: {freeDrinkLeft}/{freeDrinkQuota} ly
+                    </p>
+                    <button
+                      type="button"
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] leading-none"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={() =>
+                        setShowFreeDrinkInfo((prevShowInfo) => !prevShowInfo)
+                      }
+                      aria-label="Giải thích phần đồ uống kèm vé"
+                    >
+                      i
+                    </button>
+                  </div>
+                  {showFreeDrinkInfo ? (
+                    <p className="mt-1 max-w-68 rounded-md bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground">
+                      Số ly đồ uống kèm gói vé theo số khách đã đăng ký. Phần
+                      vượt quá áp dụng giá niêm yết trên thực đơn.
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className="text-sm text-muted-foreground"
+                  disabled={submitting}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={closeCart}
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {lines.length === 0 ? (
@@ -437,11 +546,10 @@ export function MenuCartBar({
                 </p>
               ) : (
                 <ul className="space-y-3">
-                  {lines.map((line) => (
+                  {pricedLines.map((pricedLine) => (
                     <CartLineRow
-                      key={line.lineId}
-                      line={line}
-                      menuItem={itemById.get(line.itemId)}
+                      key={pricedLine.line.lineId}
+                      pricedLine={pricedLine}
                       submitting={submitting}
                       onDecrement={handleLineDecrement}
                       onIncrement={handleLineIncrement}

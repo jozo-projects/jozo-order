@@ -753,9 +753,6 @@ export function CoffeeSessionMePanel({
                               </p>
                               <p className="mt-0.5 text-xs text-muted-foreground">
                                 SL: {line.qty}
-                                {line.categoryId === "drink" && freeQty > 0
-                                  ? ` · miễn phí ${freeQty}`
-                                  : null}
                                 {line.categoryId === "drink" &&
                                 line.chargedQty > 0
                                   ? ` · tính tiền ${line.chargedQty}`

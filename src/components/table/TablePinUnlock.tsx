@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
-import Image from "next/image";
-import jozoLogo from "@/assets/images/jozo-logo.png";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const PIN_LEN = 6;
 
@@ -177,10 +175,9 @@ export function TablePinUnlock({ tableCode }: TablePinUnlockProps) {
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-[0_18px_36px_rgba(195,10,10,0.14)]">
         <div className="text-center">
-          <div className="mx-auto mb-3 w-fit rounded-2xl bg-white p-2 shadow-sm">
-            <Image src={jozoLogo} alt="Logo Jozo" className="h-9 w-auto" priority />
-          </div>
-          <h2 className="mt-3 text-lg font-semibold text-primary">Nhập mã PIN bàn</h2>
+          <h2 className="mt-3 text-lg font-semibold text-primary">
+            Nhập mã PIN bàn
+          </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Mã 6 chữ số trên bàn để đặt món
           </p>

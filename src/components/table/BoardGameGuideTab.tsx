@@ -28,7 +28,10 @@ export function BoardGameGuideTab(props: BoardGameGuideTabProps) {
   const availablePlayerCounts = Array.from(
     new Set(
       games.flatMap((game) => {
-        if (typeof game.minPlayers !== "number" || typeof game.maxPlayers !== "number") {
+        if (
+          typeof game.minPlayers !== "number" ||
+          typeof game.maxPlayers !== "number"
+        ) {
           return [];
         }
 
@@ -49,7 +52,8 @@ export function BoardGameGuideTab(props: BoardGameGuideTabProps) {
 
   const filteredGames = games.filter((game) => {
     const matchesQuery =
-      normalizedQuery.length === 0 || game.name.toLowerCase().includes(normalizedQuery);
+      normalizedQuery.length === 0 ||
+      game.name.toLowerCase().includes(normalizedQuery);
 
     if (!matchesQuery) {
       return false;
@@ -59,7 +63,10 @@ export function BoardGameGuideTab(props: BoardGameGuideTabProps) {
       return true;
     }
 
-    if (typeof game.minPlayers !== "number" || typeof game.maxPlayers !== "number") {
+    if (
+      typeof game.minPlayers !== "number" ||
+      typeof game.maxPlayers !== "number"
+    ) {
       return false;
     }
 

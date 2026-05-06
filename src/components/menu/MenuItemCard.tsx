@@ -1,17 +1,23 @@
 "use client";
 
 import { formatPrice, cn } from "@/lib/utils";
-import { basePriceForBoardGame } from "@/lib/menu-item-pricing";
 import type { MenuItem } from "@/types";
 
 interface MenuItemCardProps {
   item: MenuItem;
+  remainingFreeDrink: number;
   onTap: (item: MenuItem) => void;
   onAdd: (item: MenuItem) => void;
 }
 
-export function MenuItemCard({ item, onTap, onAdd }: MenuItemCardProps) {
-  const displayPrice = basePriceForBoardGame(item);
+export function MenuItemCard({
+  item,
+  remainingFreeDrink,
+  onTap,
+  onAdd,
+}: MenuItemCardProps) {
+  const isDrink = item.categoryId === "drink";
+  const displayPrice = isDrink && remainingFreeDrink > 0 ? 0 : item.price;
 
   return (
     <div
@@ -49,6 +55,11 @@ export function MenuItemCard({ item, onTap, onAdd }: MenuItemCardProps) {
           <span className="text-sm font-semibold text-primary">
             {formatPrice(displayPrice)}
           </span>
+          {isDrink && remainingFreeDrink > 0 ? (
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Kèm vé · còn {remainingFreeDrink} ly
+            </span>
+          ) : null}
           {!item.isAvailable && (
             <span className="text-[10px] font-medium text-destructive">
               Hết món

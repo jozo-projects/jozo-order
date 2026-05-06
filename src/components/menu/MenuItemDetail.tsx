@@ -9,13 +9,13 @@ import {
 } from "react";
 import { Button } from "@/components/ui/Button";
 import {
-  basePriceForBoardGame,
   buildSelectionsFromPicked,
   defaultPickedChoices,
   optionsExtraForSelections,
 } from "@/lib/menu-item-pricing";
 import { formatPrice, cn } from "@/lib/utils";
 import type { CartSelection, MenuItem, MenuItemOption } from "@/types";
+import { useDraggableBottomSheet } from "@/components/ui/useDraggableBottomSheet";
 
 const NOTE_MAX_LEN = 300;
 
@@ -27,12 +27,14 @@ export type MenuItemDetailAddExtra = {
 
 interface MenuItemDetailProps {
   item: MenuItem | null;
+  remainingFreeDrink: number;
   onClose: () => void;
   onAdd: (item: MenuItem, extra?: MenuItemDetailAddExtra) => void;
 }
 
 interface MenuItemDetailModalProps {
   item: MenuItem;
+  remainingFreeDrink: number;
   onClose: () => void;
   onAdd: (item: MenuItem, extra?: MenuItemDetailAddExtra) => void;
 }
@@ -236,6 +238,7 @@ function NoteSection({ value, onChange }: NoteSectionProps) {
 
 function MenuItemDetailModal({
   item,
+  remainingFreeDrink,
   onClose,
   onAdd,
 }: MenuItemDetailModalProps) {
@@ -243,6 +246,8 @@ function MenuItemDetailModal({
   const [picked, setPicked] = useState<Record<string, string[]>>(defaultPicked);
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const { dragHandleProps, hasDragged, sheetStyle } =
+    useDraggableBottomSheet({ onClose });
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -332,8 +337,12 @@ function MenuItemDetailModal({
     });
   }, [item.options, picked]);
 
-  const unitTotal = basePriceForBoardGame(item) + optionsExtra;
-  const lineTotal = unitTotal * quantity;
+  const isDrink = item.categoryId === "drink";
+  const freeAppliedQty = isDrink ? Math.min(quantity, remainingFreeDrink) : 0;
+  const chargedQty = isDrink ? Math.max(0, quantity - freeAppliedQty) : quantity;
+  const unitDisplayPrice = isDrink && remainingFreeDrink > 0 ? 0 : item.price;
+  const unitTotal = unitDisplayPrice + optionsExtra;
+  const lineTotal = chargedQty * item.price + quantity * optionsExtra;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -344,12 +353,22 @@ function MenuItemDetailModal({
       />
 
       <div
-        className="relative mb-(--app-tab-bar,0px) flex max-h-[min(92dvh,640px)] w-full max-w-md flex-col rounded-t-[1.25rem] bg-background shadow-2xl animate-slide-up"
+        className={cn(
+          "relative mb-(--app-tab-bar,0px) flex max-h-[min(92dvh,640px)] w-full max-w-md flex-col rounded-t-[1.25rem] bg-background shadow-2xl",
+          !hasDragged && "animate-slide-up",
+        )}
+        style={sheetStyle}
         role="dialog"
         aria-modal="true"
         aria-labelledby="menu-item-detail-title"
       >
-        <div className="flex shrink-0 justify-center pt-2.5 pb-1">
+        <div
+          {...dragHandleProps}
+          className={cn(
+            "flex shrink-0 justify-center pt-2.5 pb-1",
+            dragHandleProps.className,
+          )}
+        >
           <div className="h-1 w-9 rounded-full bg-muted-foreground/25" />
         </div>
 
@@ -379,6 +398,12 @@ function MenuItemDetailModal({
                 <p className="mt-1 text-lg font-bold text-primary tabular-nums">
                   {formatPrice(unitTotal)}
                 </p>
+                {isDrink && remainingFreeDrink > 0 ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Giá gốc {formatPrice(item.price)}/ly · còn {remainingFreeDrink}{" "}
+                    ly kèm vé
+                  </p>
+                ) : null}
                 {item.description ? (
                   <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                     {item.description}
@@ -464,12 +489,18 @@ function MenuItemDetailModal({
   );
 }
 
-export function MenuItemDetail({ item, onClose, onAdd }: MenuItemDetailProps) {
+export function MenuItemDetail({
+  item,
+  remainingFreeDrink,
+  onClose,
+  onAdd,
+}: MenuItemDetailProps) {
   if (!item) return null;
   return (
     <MenuItemDetailModal
       key={item.id}
       item={item}
+      remainingFreeDrink={remainingFreeDrink}
       onClose={onClose}
       onAdd={onAdd}
     />

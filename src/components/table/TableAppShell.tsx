@@ -88,6 +88,109 @@ interface TableAppShellProps {
   coffeeMe: unknown | null;
 }
 
+function extractPeopleCount(coffeeMe: unknown): number {
+  if (coffeeMe == null || typeof coffeeMe !== "object" || Array.isArray(coffeeMe)) {
+    return 0;
+  }
+  const root = coffeeMe as Record<string, unknown>;
+  const candidates: unknown[] = [
+    root.peopleCount,
+    root.people_count,
+    (root.result as Record<string, unknown> | undefined)?.peopleCount,
+    (root.result as Record<string, unknown> | undefined)?.people_count,
+    (root.data as Record<string, unknown> | undefined)?.peopleCount,
+    (root.data as Record<string, unknown> | undefined)?.people_count,
+    (root.session as Record<string, unknown> | undefined)?.peopleCount,
+    (root.session as Record<string, unknown> | undefined)?.people_count,
+  ];
+  for (const value of candidates) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.floor(parsed);
+      }
+    }
+  }
+  return 0;
+}
+
+function numField(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function extractOrderedDrinkQty(coffeeMe: unknown): number {
+  if (coffeeMe == null || typeof coffeeMe !== "object" || Array.isArray(coffeeMe)) {
+    return 0;
+  }
+  const root = coffeeMe as Record<string, unknown>;
+  const layers: Record<string, unknown>[] = [root];
+  for (const key of ["result", "data", "session"] as const) {
+    const next = root[key];
+    if (next && typeof next === "object" && !Array.isArray(next)) {
+      layers.push(next as Record<string, unknown>);
+    }
+  }
+
+  // Prefer lineItems/lines because this is nearest to "Đơn của tôi".
+  for (const layer of layers) {
+    const orderWrap = layer.order;
+    if (orderWrap == null || typeof orderWrap !== "object" || Array.isArray(orderWrap)) {
+      continue;
+    }
+    const orderObj = orderWrap as Record<string, unknown>;
+    const candidates = [
+      orderObj.lineItems,
+      orderObj.lines,
+      (orderObj.order as Record<string, unknown> | undefined)?.lines,
+    ];
+    for (const rawLines of candidates) {
+      if (!Array.isArray(rawLines)) continue;
+      const qty = rawLines.reduce((sum, rawLine) => {
+        if (rawLine == null || typeof rawLine !== "object" || Array.isArray(rawLine)) {
+          return sum;
+        }
+        const line = rawLine as Record<string, unknown>;
+        const category = line.category ?? line.categoryId ?? line.category_id;
+        const isDrink = category === "drink";
+        if (!isDrink) return sum;
+        const q = numField(line.quantity ?? line.qty);
+        return sum + (q != null && q > 0 ? Math.floor(q) : 0);
+      }, 0);
+      if (qty > 0) return qty;
+    }
+  }
+
+  // Fallback to legacy cart.drinks maps.
+  for (const layer of layers) {
+    const cartObj =
+      (layer.cart && typeof layer.cart === "object" && !Array.isArray(layer.cart)
+        ? (layer.cart as Record<string, unknown>)
+        : null) ??
+      ((layer.order as Record<string, unknown> | undefined)?.order &&
+      typeof (layer.order as Record<string, unknown> | undefined)?.order === "object" &&
+      !Array.isArray((layer.order as Record<string, unknown> | undefined)?.order)
+        ? ((layer.order as Record<string, unknown>).order as Record<string, unknown>)
+        : null);
+    const drinks = cartObj?.drinks;
+    if (drinks == null || typeof drinks !== "object" || Array.isArray(drinks)) continue;
+    const drinkMap = drinks as Record<string, unknown>;
+    const total = Object.values(drinkMap).reduce<number>((sum, value) => {
+      const q = numField(value);
+      return sum + (q != null && q > 0 ? Math.floor(q) : 0);
+    }, 0);
+    if (total > 0) return total;
+  }
+  return 0;
+}
+
 export function TableAppShell({
   categories,
   items,
@@ -106,6 +209,9 @@ export function TableAppShell({
   const checkoutIntent = searchParams.get("checkout") === "1";
   const ordersBadge = coffeeMe != null ? getCoffeeMeTabBadgeCount(coffeeMe) : 0;
   const showOrdersDot = ordersBadge > 0;
+  const peopleCount = extractPeopleCount(coffeeMe);
+  const orderedDrinkQty = extractOrderedDrinkQty(coffeeMe);
+  const freeDrinkQuota = Math.max(0, peopleCount - orderedDrinkQty);
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", TAB_BAR_VAR)}>
@@ -123,6 +229,8 @@ export function TableAppShell({
             items={items}
             tableCode={tableCode}
             insetBottomNav
+            peopleCount={peopleCount}
+            freeDrinkQuota={freeDrinkQuota}
           />
         )}
         {tab === "orders" && (
