@@ -587,7 +587,7 @@ export function CoffeeSessionMePanel({
                                 `Món #${line.itemId.slice(-Math.min(6, line.itemId.length))}`}
                             </p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                              SL: {line.quantity} · {formatPrice(unit)}/món
+                              SL: {line.quantity}
                             </p>
                             {line.note ? (
                               <p className="mt-0.5 text-xs text-foreground/80">
@@ -686,21 +686,6 @@ export function CoffeeSessionMePanel({
                               </p>
                               <p className="mt-0.5 text-xs text-muted-foreground">
                                 SL: {line.quantity}
-                                {showUnitStrike ? (
-                                  <>
-                                    {" "}
-                                    ·{" "}
-                                    <span className="line-through decoration-muted-foreground/80">
-                                      {formatPrice(line.listUnitPrice)}
-                                    </span>
-                                  </>
-                                ) : line.chargedUnitPrice > 0 ||
-                                  line.listUnitPrice > 0 ? (
-                                  <>
-                                    {" "}
-                                    · {formatPrice(line.chargedUnitPrice)}/món
-                                  </>
-                                ) : null}
                               </p>
                               {line.note ? (
                                 <p className="mt-0.5 text-xs text-foreground/80">
