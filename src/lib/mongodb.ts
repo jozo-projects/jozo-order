@@ -36,10 +36,17 @@ function getRequiredEnv(
 }
 
 export function buildMongoUriFromEnv(): string {
+  const dbName = getRequiredEnv("DB_NAME");
+
+  if (process.env.NODE_ENV !== "production") {
+    const host = process.env.MONGODB_HOST?.trim() || "localhost";
+    const port = process.env.MONGODB_PORT?.trim() || "27017";
+    return `mongodb://${host}:${port}/${dbName}`;
+  }
+
   const user = encodeURIComponent(getRequiredEnv("DB_USER"));
   const password = encodeURIComponent(getRequiredEnv("DB_PASSWORD"));
   const host = getRequiredEnv("VPS_IP");
-  const dbName = getRequiredEnv("DB_NAME");
   const port = process.env.VPS_PORT?.trim() || "27017";
   const authSource = process.env.VPS_AUTH_SOURCE?.trim() || "admin";
   return `mongodb://${user}:${password}@${host}:${port}/${dbName}?authSource=${authSource}`;

@@ -269,6 +269,42 @@ function tryPeopleCount(me: unknown): number {
   return 0;
 }
 
+function tryPlanSnapshot(me: unknown): {
+  pricePerPerson: number;
+  peopleCount: number;
+  totalPrice: number;
+  currency: string;
+} | null {
+  if (me == null || typeof me !== "object" || Array.isArray(me)) return null;
+  const root = me as Record<string, unknown>;
+  const layers: Record<string, unknown>[] = [root];
+  for (const key of ["data", "result", "session"] as const) {
+    const x = root[key];
+    if (x && typeof x === "object" && !Array.isArray(x)) {
+      layers.push(x as Record<string, unknown>);
+    }
+  }
+  for (const layer of layers) {
+    const raw = layer.planSnapshot ?? layer.plan_snapshot;
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const snap = raw as Record<string, unknown>;
+    const totalPrice = numField(snap.totalPrice ?? snap.total_price);
+    if (totalPrice == null || totalPrice <= 0) continue;
+    const pricePerPerson = numField(
+      snap.pricePerPerson ?? snap.price_per_person,
+    );
+    const peopleCount = numField(snap.peopleCount ?? snap.people_count);
+    const currency = typeof snap.currency === "string" ? snap.currency : "VND";
+    return {
+      pricePerPerson: pricePerPerson ?? 0,
+      peopleCount: peopleCount ?? 0,
+      totalPrice,
+      currency,
+    };
+  }
+  return null;
+}
+
 type SessionOrderTotals = {
   fnbChargedTotal: number;
   fnbListTotal: number;
@@ -362,6 +398,44 @@ function cartQtyTotal(lines: CartLine[]): number {
   return lines.reduce((a, l) => a + l.qty, 0);
 }
 
+function PlanSnapshotLineItem({
+  snapshot,
+  onInfoClick,
+}: {
+  snapshot: {
+    peopleCount: number;
+    pricePerPerson: number;
+    totalPrice: number;
+  };
+  onInfoClick: () => void;
+}) {
+  return (
+    <li className="flex items-start justify-between gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium leading-snug text-foreground">
+            Vé chơi board game
+          </p>
+          <button
+            type="button"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-border text-[10px] leading-none text-muted-foreground"
+            onClick={onInfoClick}
+            aria-label="Giải thích giá vé chơi"
+          >
+            i
+          </button>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {snapshot.peopleCount} người × {formatPrice(snapshot.pricePerPerson)}
+        </p>
+      </div>
+      <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+        {formatPrice(snapshot.totalPrice)}
+      </p>
+    </li>
+  );
+}
+
 /** So hien thi tren tab Don (don + tong so mon trong gio server). */
 export function getCoffeeMeTabBadgeCount(data: unknown): number {
   const orders = tryOrders(data).length;
@@ -398,23 +472,19 @@ export function CoffeeSessionMePanel({
   const [localCheckoutFeedback, setLocalCheckoutFeedback] = useState<
     string | null
   >(null);
+  const [showPlanInfo, setShowPlanInfo] = useState(false);
   const orders = tryOrders(data);
   const serverCart = tryServerCart(data);
   const peopleCount = useMemo(() => tryPeopleCount(data), [data]);
   const lineItems = useMemo(() => trySessionLineItems(data), [data]);
   const useLineItems = lineItems.length > 0;
   const orderTotals = useMemo(() => trySessionOrderTotals(data), [data]);
+  const planSnapshot = useMemo(() => tryPlanSnapshot(data), [data]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
-    console.log("[orders-tab] raw data", data);
+    console.log("[orders-tab] me", data);
   }, [data]);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    if (!useLineItems) return;
-    console.log("[orders-tab] parsed lineItems", lineItems);
-  }, [lineItems, useLineItems]);
 
   const itemById = useMemo(() => {
     const m = new Map<string, MenuItem>();
@@ -478,6 +548,7 @@ export function CoffeeSessionMePanel({
   const hasCart = useLineItems || cartLines.length > 0;
   const hasOrders = orders.length > 0;
   const hasLocalCart = localCartLines.length > 0;
+  const showBillSection = Boolean(planSnapshot) || hasCart;
 
   const localCheckoutRows = useMemo(
     () =>
@@ -501,6 +572,22 @@ export function CoffeeSessionMePanel({
     () => localCheckoutRows.reduce((sum, row) => sum + row.lineTotal, 0),
     [localCheckoutRows],
   );
+
+  const billGrandTotal = useMemo(() => {
+    const ticket = planSnapshot?.totalPrice ?? 0;
+    const fnb = useLineItems
+      ? chargedTotalDisplay
+      : hasCart
+        ? cartTotalMenu
+        : 0;
+    return ticket + fnb;
+  }, [
+    planSnapshot,
+    useLineItems,
+    hasCart,
+    chargedTotalDisplay,
+    cartTotalMenu,
+  ]);
 
   const handleConfirmLocalCheckout = async () => {
     if (!hasLocalCart || submittingLocalCheckout) return;
@@ -552,7 +639,7 @@ export function CoffeeSessionMePanel({
         </h1>
       </header>
 
-      {!hasCart && !hasOrders ? (
+      {!showBillSection && !hasOrders ? (
         <div className="flex flex-col items-center rounded-2xl bg-muted/40 px-6 py-14 text-center">
           <div className="text-5xl">🧾</div>
           <p className="mt-4 text-sm font-medium text-foreground">
@@ -646,7 +733,7 @@ export function CoffeeSessionMePanel({
             </section>
           ) : null}
 
-          {hasCart && (
+          {showBillSection && (
             <section>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/15 text-xs">
@@ -656,6 +743,12 @@ export function CoffeeSessionMePanel({
               </h2>
               <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
                 <ul className="divide-y divide-border">
+                  {planSnapshot ? (
+                    <PlanSnapshotLineItem
+                      snapshot={planSnapshot}
+                      onInfoClick={() => setShowPlanInfo(true)}
+                    />
+                  ) : null}
                   {useLineItems
                     ? lineItems.map((line, idx) => {
                         const id = line.menuItemId ?? line.itemId ?? "";
@@ -752,29 +845,18 @@ export function CoffeeSessionMePanel({
                         );
                       })}
                 </ul>
-                {useLineItems ? (
+                {billGrandTotal > 0 ? (
                   <div className="space-y-1 border-t border-border bg-muted/30 px-4 py-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium text-foreground">
-                        Tạm tính (thực trả)
+                        Tổng cộng
                       </span>
                       <span className="text-base font-bold text-primary tabular-nums">
-                        {formatPrice(chargedTotalDisplay)}
+                        {formatPrice(billGrandTotal)}
                       </span>
                     </div>
                   </div>
-                ) : (
-                  cartTotalMenu > 0 && (
-                    <div className="flex items-center justify-between border-t border-border bg-muted/30 px-4 py-3">
-                      <span className="text-sm text-muted-foreground">
-                        Tạm tính
-                      </span>
-                      <span className="text-base font-bold text-primary">
-                        {formatPrice(cartTotalMenu)}
-                      </span>
-                    </div>
-                  )
-                )}
+                ) : null}
               </div>
             </section>
           )}
@@ -803,6 +885,32 @@ export function CoffeeSessionMePanel({
           )}
         </div>
       )}
+
+      {showPlanInfo ? (
+        <div className="fixed inset-0 z-110 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setShowPlanInfo(false)}
+            aria-label="Đóng"
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-background p-4 shadow-2xl">
+            <h3 className="text-sm font-semibold text-foreground">
+              Giá vé chơi bao gồm
+            </h3>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Giá đã bao gồm nước size M và 4 giờ chơi.
+            </p>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+              onClick={() => setShowPlanInfo(false)}
+            >
+              Đã hiểu
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
